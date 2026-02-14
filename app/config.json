@@ -15,12 +15,13 @@
       "dependencies": [],
       "config": {
         "ssr_bundle_path": "./public/assets/ssr-bundle.js",
+        "asset_manifest_path": "./public/assets/manifest.json",
+        "asset_public_prefix": "/assets",
+        "client_manifest_entry": "src/entry-client.tsx",
         "pool_size": 4,
         "acquire_timeout_ms": 200,
         "render_timeout_ms": 50,
-        "css_path": "/assets/app.css",
-        "client_js_path": "/assets/client.js",
-        "wrap_fragment": false
+        "wrap_fragment": true
       }
     }
   ]

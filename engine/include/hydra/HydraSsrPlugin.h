@@ -34,12 +34,15 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
 
   private:
     std::string ssrBundlePath_;
-    std::string cssPath_ = "/assets/app.css";
-    std::string clientJsPath_ = "/assets/client.js";
+    std::string cssPath_;
+    std::string clientJsPath_;
+    std::string assetManifestPath_ = "./public/assets/manifest.json";
+    std::string assetPublicPrefix_ = "/assets";
+    std::string clientManifestEntry_ = "src/entry-client.tsx";
     std::size_t isolatePoolSize_ = 0;
     std::uint64_t isolateAcquireTimeoutMs_ = 0;
     std::uint64_t renderTimeoutMs_ = 50;
-    bool wrapFragment_ = false;
+    bool wrapFragment_ = true;
 
     std::unique_ptr<V8IsolatePool> isolatePool_;
 };

@@ -3369,9 +3369,6 @@
       )
     ] }) });
   }
-  function escapeForScriptTag(value) {
-    return value.replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
-  }
   function parseProps(propsJson) {
     if (!propsJson) {
       return {};
@@ -3442,21 +3439,7 @@
     const parsedProps = parseProps(propsJson);
     const hydratedProps = applySsrTestHooks(parsedProps);
     const appHtml = renderToString(/* @__PURE__ */ jsxRuntimeExports.jsx(App, { url: url || "/", initialProps: hydratedProps }));
-    const safeProps = escapeForScriptTag(JSON.stringify(hydratedProps));
-    return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>HydraStack</title>
-    <link rel="stylesheet" href="/assets/app.css" />
-  </head>
-  <body>
-    <div id="root">${appHtml}</div>
-    <script id="__HYDRA_PROPS__" type="application/json">${safeProps}<\/script>
-    <script src="/assets/client.js" defer><\/script>
-  </body>
-</html>`;
+    return appHtml;
   };
 })();
 //# sourceMappingURL=ssr-bundle.js.map

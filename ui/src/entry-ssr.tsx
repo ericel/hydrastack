@@ -12,10 +12,6 @@ declare global {
   }
 }
 
-function escapeForScriptTag(value: string): string {
-  return value.replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
-}
-
 function parseProps(propsJson: string): Record<string, unknown> {
   if (!propsJson) {
     return {};
@@ -100,25 +96,10 @@ function applySsrTestHooks(
   return props;
 }
 
-// SSR contract: globalThis.render(url, propsJson) -> full HTML document.
+// SSR contract: globalThis.render(url, propsJson) -> app HTML fragment.
 globalThis.render = (url: string, propsJson: string): string => {
   const parsedProps = parseProps(propsJson);
   const hydratedProps = applySsrTestHooks(parsedProps);
   const appHtml = renderToString(<App url={url || "/"} initialProps={hydratedProps} />);
-  const safeProps = escapeForScriptTag(JSON.stringify(hydratedProps));
-
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>HydraStack</title>
-    <link rel="stylesheet" href="/assets/app.css" />
-  </head>
-  <body>
-    <div id="root">${appHtml}</div>
-    <script id="__HYDRA_PROPS__" type="application/json">${safeProps}</script>
-    <script src="/assets/client.js" defer></script>
-  </body>
-</html>`;
+  return appHtml;
 };

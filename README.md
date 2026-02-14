@@ -49,6 +49,19 @@ cmake --build build -j
 
 If you want CMake to trigger UI bundling, configure with `-DHYDRA_BUILD_UI=ON`.
 
+### UI artifact build
+
+HydraStack expects two UI build passes:
+
+- SSR bundle: deterministic `public/assets/ssr-bundle.js`
+- Client bundle: hashed JS/CSS plus `public/assets/manifest.json`
+
+```bash
+cd ui
+npm install
+npm run build
+```
+
 ## Milestone 2 Notes (Concurrency)
 
 HydraStack uses an isolate pool with RAII leases.
@@ -78,3 +91,33 @@ curl -s "http://127.0.0.1:8070/?counter=1" | rg "Isolate counter"
 curl -s "http://127.0.0.1:8070/?counter=1" | rg "Isolate counter"
 ```
 With `pool_size=1`, the counter should increase monotonically between requests.
+
+## Milestone 3 Notes (Manifest + Hashed Assets)
+
+HydraSsrPlugin can resolve CSS/JS from Vite's manifest automatically. You no longer need
+hardcoded `css_path` and `client_js_path` in `app/config.json`.
+
+Recommended plugin config:
+
+```json
+{
+  "name": "hydra::HydraSsrPlugin",
+  "dependencies": [],
+  "config": {
+    "ssr_bundle_path": "./public/assets/ssr-bundle.js",
+    "asset_manifest_path": "./public/assets/manifest.json",
+    "asset_public_prefix": "/assets",
+    "client_manifest_entry": "src/entry-client.tsx",
+    "pool_size": 4,
+    "acquire_timeout_ms": 200,
+    "render_timeout_ms": 50,
+    "wrap_fragment": true
+  }
+}
+```
+
+Notes:
+
+- `wrap_fragment` should be `true` when `globalThis.render` returns only app markup.
+- `asset_public_prefix` is prepended to manifest file names when they are relative.
+- `css_path` and `client_js_path` are still accepted as explicit overrides.

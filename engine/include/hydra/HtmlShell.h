@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -8,6 +9,10 @@ namespace hydra {
 struct HtmlShellAssets {
     std::string cssPath = "/assets/app.css";
     std::string clientJsPath = "/assets/client.js";
+    std::string hmrClientPath;
+    bool clientJsModule = false;
+    std::string devReloadProbePath;
+    std::uint64_t devReloadIntervalMs = 0;
 };
 
 class HtmlShell {

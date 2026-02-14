@@ -15,6 +15,8 @@ namespace hydra {
 
 class V8IsolatePool {
   public:
+    using FetchBridge = V8SsrRuntime::FetchBridge;
+
     class Lease {
       public:
         Lease() = default;
@@ -41,7 +43,8 @@ class V8IsolatePool {
 
     V8IsolatePool(std::size_t size,
                   std::string bundlePath,
-                  std::uint64_t renderTimeoutMs);
+                  std::uint64_t renderTimeoutMs,
+                  FetchBridge fetchBridge = {});
 
     [[nodiscard]] Lease acquire(std::uint64_t acquireTimeoutMs = 0);
     [[nodiscard]] std::uint64_t renderTimeoutMs() const;
@@ -55,6 +58,7 @@ class V8IsolatePool {
     std::vector<std::unique_ptr<V8SsrRuntime>> runtimes_;
     std::queue<std::size_t> availableRuntimes_;
     std::string bundlePath_;
+    FetchBridge fetchBridge_;
     mutable std::mutex mutex_;
     std::condition_variable cv_;
     std::uint64_t renderTimeoutMs_ = 0;

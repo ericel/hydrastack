@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "npm run build:ssr && npm run build:client",
     "build:ssr": "vite build --mode ssr",
+    "build:ssr:watch": "vite build --mode ssr --watch",
     "build:client": "vite build --mode client"
   },
   "dependencies": {

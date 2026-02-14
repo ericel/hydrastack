@@ -4,11 +4,22 @@ import App from "./App";
 
 declare global {
   interface Window {
-    render?: (url: string, propsJson: string) => string;
+    render?: (url: string, propsJson: string, requestContextJson?: string) => string;
+  }
+
+  interface HydraBridgeResponse {
+    status?: number;
+    body?: string;
+    headers?: Record<string, string>;
+  }
+
+  interface HydraGlobalApi {
+    fetch?: (request: Record<string, unknown> | string) => HydraBridgeResponse;
   }
 
   interface GlobalThis {
-    render?: (url: string, propsJson: string) => string;
+    render?: (url: string, propsJson: string, requestContextJson?: string) => string;
+    hydra?: HydraGlobalApi;
   }
 }
 
@@ -19,6 +30,18 @@ function parseProps(propsJson: string): Record<string, unknown> {
 
   try {
     return JSON.parse(propsJson) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function parseRequestContext(requestContextJson: string | undefined): Record<string, unknown> {
+  if (!requestContextJson) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(requestContextJson) as Record<string, unknown>;
   } catch {
     return {};
   }
@@ -93,13 +116,40 @@ function applySsrTestHooks(
     props.__hydra_isolate_counter = nextIsolateCounter();
   }
 
+  const bridgePathRaw =
+    testConfig.bridgePath ?? testConfig.bridge_path ?? testConfig.apiBridgePath;
+  const bridgePath = typeof bridgePathRaw === "string" ? bridgePathRaw : "";
+  if (bridgePath && globalThis.hydra?.fetch) {
+    const bridgeResult = globalThis.hydra.fetch({
+      method: "GET",
+      path: bridgePath
+    });
+    props.__hydra_bridge_status =
+      typeof bridgeResult.status === "number" ? bridgeResult.status : null;
+    props.__hydra_bridge_body =
+      typeof bridgeResult.body === "string" ? bridgeResult.body : "";
+  }
+
   return props;
 }
 
-// SSR contract: globalThis.render(url, propsJson) -> app HTML fragment.
-globalThis.render = (url: string, propsJson: string): string => {
+// SSR contract: globalThis.render(url, propsJson, requestContextJson) -> app HTML fragment.
+globalThis.render = (
+  url: string,
+  propsJson: string,
+  requestContextJson?: string
+): string => {
   const parsedProps = parseProps(propsJson);
-  const hydratedProps = applySsrTestHooks(parsedProps);
-  const appHtml = renderToString(<App url={url || "/"} initialProps={hydratedProps} />);
+  const requestContext = parseRequestContext(requestContextJson);
+  const routeUrl =
+    typeof requestContext.routeUrl === "string" && requestContext.routeUrl
+      ? requestContext.routeUrl
+      : url || "/";
+  const propsWithContext = {
+    ...parsedProps,
+    __hydra_request: requestContext
+  };
+  const hydratedProps = applySsrTestHooks(propsWithContext);
+  const appHtml = renderToString(<App url={routeUrl} initialProps={hydratedProps} />);
   return appHtml;
 };

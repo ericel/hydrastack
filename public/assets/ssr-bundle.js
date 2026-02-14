@@ -3339,6 +3339,10 @@
     const message = asString(initialProps.message, "HydraStack SSR active");
     const burnMs = asNumber(initialProps.__hydra_burn_ms);
     const isolateCounter = asNumber(initialProps.__hydra_isolate_counter);
+    const requestContext = typeof initialProps.__hydra_request === "object" && initialProps.__hydra_request !== null ? initialProps.__hydra_request : {};
+    const requestUrl = asString(requestContext.url, "");
+    const bridgeStatus = asNumber(initialProps.__hydra_bridge_status);
+    const bridgeBody = asString(initialProps.__hydra_bridge_body, "");
     return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "min-h-screen bg-gradient-to-b from-deep-900 to-deep-700 text-slate-100", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "mx-auto max-w-3xl px-6 py-16", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm uppercase tracking-[0.2em] text-accent-500", children: "HydraStack" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "mt-4 text-4xl font-semibold", children: message }),
@@ -3346,6 +3350,10 @@
         "Route: ",
         url
       ] }),
+      requestUrl ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs text-slate-400", children: [
+        "Full URL: ",
+        requestUrl
+      ] }) : null,
       burnMs !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs text-slate-400", children: [
         "SSR burn: ",
         burnMs,
@@ -3354,6 +3362,12 @@
       isolateCounter !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs text-slate-400", children: [
         "Isolate counter: ",
         isolateCounter
+      ] }) : null,
+      bridgeStatus !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs text-slate-400", children: [
+        "Bridge status: ",
+        bridgeStatus,
+        " ",
+        bridgeBody ? `(${bridgeBody})` : ""
       ] }) : null,
       /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "button",
@@ -3375,6 +3389,16 @@
     }
     try {
       return JSON.parse(propsJson);
+    } catch {
+      return {};
+    }
+  }
+  function parseRequestContext(requestContextJson) {
+    if (!requestContextJson) {
+      return {};
+    }
+    try {
+      return JSON.parse(requestContextJson);
     } catch {
       return {};
     }
@@ -3419,6 +3443,7 @@
     return next;
   }
   function applySsrTestHooks(inputProps) {
+    var _a;
     const props = { ...inputProps };
     const testConfig = typeof props.__hydra_test === "object" && props.__hydra_test !== null ? props.__hydra_test : {};
     const burnMsRaw = testConfig.burnMs ?? testConfig.burn_ms;
@@ -3433,12 +3458,28 @@
     if (exposeCounter) {
       props.__hydra_isolate_counter = nextIsolateCounter();
     }
+    const bridgePathRaw = testConfig.bridgePath ?? testConfig.bridge_path ?? testConfig.apiBridgePath;
+    const bridgePath = typeof bridgePathRaw === "string" ? bridgePathRaw : "";
+    if (bridgePath && ((_a = globalThis.hydra) == null ? void 0 : _a.fetch)) {
+      const bridgeResult = globalThis.hydra.fetch({
+        method: "GET",
+        path: bridgePath
+      });
+      props.__hydra_bridge_status = typeof bridgeResult.status === "number" ? bridgeResult.status : null;
+      props.__hydra_bridge_body = typeof bridgeResult.body === "string" ? bridgeResult.body : "";
+    }
     return props;
   }
-  globalThis.render = (url, propsJson) => {
+  globalThis.render = (url, propsJson, requestContextJson) => {
     const parsedProps = parseProps(propsJson);
-    const hydratedProps = applySsrTestHooks(parsedProps);
-    const appHtml = renderToString(/* @__PURE__ */ jsxRuntimeExports.jsx(App, { url: url || "/", initialProps: hydratedProps }));
+    const requestContext = parseRequestContext(requestContextJson);
+    const routeUrl = typeof requestContext.routeUrl === "string" && requestContext.routeUrl ? requestContext.routeUrl : url || "/";
+    const propsWithContext = {
+      ...parsedProps,
+      __hydra_request: requestContext
+    };
+    const hydratedProps = applySsrTestHooks(propsWithContext);
+    const appHtml = renderToString(/* @__PURE__ */ jsxRuntimeExports.jsx(App, { url: routeUrl, initialProps: hydratedProps }));
     return appHtml;
   };
 })();

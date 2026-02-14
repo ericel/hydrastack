@@ -20,6 +20,9 @@ const root = document.getElementById("root");
 if (root) {
   hydrateRoot(
     root,
-    <App url={window.location.pathname || "/"} initialProps={readHydrationProps()} />
+    <App
+      url={`${window.location.pathname || "/"}${window.location.search || ""}`}
+      initialProps={readHydrationProps()}
+    />
   );
 }

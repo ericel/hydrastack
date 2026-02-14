@@ -64,13 +64,16 @@ void V8IsolatePool::Lease::release() {
 
 V8IsolatePool::V8IsolatePool(std::size_t size,
                              std::string bundlePath,
-                             std::uint64_t renderTimeoutMs)
-    : bundlePath_(std::move(bundlePath)), renderTimeoutMs_(renderTimeoutMs) {
+                             std::uint64_t renderTimeoutMs,
+                             FetchBridge fetchBridge)
+    : bundlePath_(std::move(bundlePath)),
+      fetchBridge_(std::move(fetchBridge)),
+      renderTimeoutMs_(renderTimeoutMs) {
     const std::size_t poolSize = std::max<std::size_t>(1, size);
     runtimes_.reserve(poolSize);
 
     for (std::size_t i = 0; i < poolSize; ++i) {
-        runtimes_.push_back(std::make_unique<V8SsrRuntime>(bundlePath_));
+        runtimes_.push_back(std::make_unique<V8SsrRuntime>(bundlePath_, fetchBridge_));
         availableRuntimes_.push(i);
     }
 }
@@ -108,7 +111,7 @@ void V8IsolatePool::release(std::size_t runtimeIndex) {
 void V8IsolatePool::recycle(std::size_t runtimeIndex) noexcept {
     std::unique_ptr<V8SsrRuntime> replacement;
     try {
-        replacement = std::make_unique<V8SsrRuntime>(bundlePath_);
+        replacement = std::make_unique<V8SsrRuntime>(bundlePath_, fetchBridge_);
     } catch (...) {
         // Keep the existing runtime if recycle failed.
     }

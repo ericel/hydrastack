@@ -8,14 +8,35 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <atomic>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace hydra {
 
 struct RenderOptions {
     std::string urlOverride;
 };
+
+struct ApiBridgeRequest {
+    std::string method = "GET";
+    std::string path;
+    std::string query;
+    std::string body;
+    std::unordered_map<std::string, std::string> headers;
+};
+
+struct ApiBridgeResponse {
+    int status = 200;
+    std::string body;
+    std::unordered_map<std::string, std::string> headers;
+};
+
+using ApiBridgeHandler = std::function<ApiBridgeResponse(const ApiBridgeRequest &)>;
 
 class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
   public:
@@ -32,7 +53,17 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
                                      const std::string &propsJson,
                                      const RenderOptions &options = {}) const;
 
+    void setApiBridgeHandler(ApiBridgeHandler handler);
+
   private:
+    [[nodiscard]] std::string buildRouteUrl(const drogon::HttpRequestPtr &req,
+                                            const RenderOptions &options) const;
+    [[nodiscard]] Json::Value buildRequestContext(const drogon::HttpRequestPtr &req,
+                                                  const std::string &routeUrl) const;
+    [[nodiscard]] V8SsrRuntime::BridgeResponse dispatchApiBridge(
+        const V8SsrRuntime::BridgeRequest &request) const;
+    void registerDevProxyRoutes();
+
     std::string ssrBundlePath_;
     std::string cssPath_;
     std::string clientJsPath_;
@@ -43,6 +74,38 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
     std::uint64_t isolateAcquireTimeoutMs_ = 0;
     std::uint64_t renderTimeoutMs_ = 50;
     bool wrapFragment_ = true;
+    bool clientJsModule_ = false;
+    std::string hmrClientPath_;
+    bool devModeEnabled_ = false;
+    bool devProxyAssetsEnabled_ = false;
+    bool devInjectHmrClient_ = false;
+    std::string devProxyOrigin_ = "http://127.0.0.1:5174";
+    std::string devClientEntryPath_ = "/src/entry-client.tsx";
+    std::string devHmrClientPath_ = "/@vite/client";
+    std::string devCssPath_ = "/src/styles.css";
+    double devProxyTimeoutSec_ = 10.0;
+    bool devAutoReloadEnabled_ = false;
+    std::string devReloadProbePath_ = "/__hydra/test";
+    std::uint64_t devReloadIntervalMs_ = 1000;
+    bool apiBridgeEnabled_ = true;
+    bool requestContextIncludeCookies_ = false;
+    bool requestContextIncludeCookieMap_ = false;
+    std::unordered_set<std::string> requestContextAllowedCookies_;
+    std::unordered_set<std::string> requestContextHeaderAllowlist_;
+    std::unordered_set<std::string> requestContextHeaderBlocklist_ = {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "set-cookie",
+        "x-api-key",
+    };
+    bool logRenderMetrics_ = true;
+    mutable std::atomic<std::uint64_t> renderCount_{0};
+    mutable std::atomic<std::uint64_t> poolTimeoutCount_{0};
+    mutable std::atomic<std::uint64_t> renderTimeoutCount_{0};
+    mutable std::atomic<std::uint64_t> runtimeRecycleCount_{0};
+    mutable std::mutex apiBridgeMutex_;
+    ApiBridgeHandler apiBridgeHandler_;
 
     std::unique_ptr<V8IsolatePool> isolatePool_;
 };

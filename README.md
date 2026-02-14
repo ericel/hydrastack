@@ -49,6 +49,42 @@ cmake --build build -j
 
 If you want CMake to trigger UI bundling, configure with `-DHYDRA_BUILD_UI=ON`.
 
+## Dev Hot Reload
+
+HydraStack now supports dev flow with:
+
+- Vite HMR for React/Tailwind changes.
+- Auto rebuild + restart for Drogon/C++ source changes.
+- SSR bundle watch + app restart when `ui/src/entry-ssr.tsx` changes.
+
+Files:
+
+- `app/config.dev.json`: dev config with `dev_mode.enabled=true`.
+- `scripts/dev.sh`: starts Vite and watches C++ source changes.
+- `scripts/dev.sh`: starts Vite, SSR bundle watch, and watches C++ source changes.
+- `scripts/run_drogon_dev_once.sh`: build + run one Drogon instance.
+
+Usage:
+
+```bash
+cd hydrastack
+./scripts/dev.sh
+```
+
+Notes:
+
+- C++ watcher uses `watchexec` if available, otherwise `fswatch`.
+- If neither is installed, the script runs Drogon once and prints a warning.
+- You can override paths:
+  - `HYDRA_BUILD_DIR=/path/to/build`
+  - `HYDRA_CONFIG_PATH=/path/to/config.dev.json`
+- You can override expected ports for startup checks:
+  - `HYDRA_APP_PORT=8070`
+  - `HYDRA_VITE_PORT=5174`
+- `main.cc` also supports `HYDRA_CONFIG` env var or a CLI arg:
+  - `HYDRA_CONFIG=app/config.dev.json ./build/hydra_demo`
+  - `./build/hydra_demo app/config.dev.json`
+
 ### UI artifact build
 
 HydraStack expects two UI build passes:
@@ -121,3 +157,51 @@ Notes:
 - `wrap_fragment` should be `true` when `globalThis.render` returns only app markup.
 - `asset_public_prefix` is prepended to manifest file names when they are relative.
 - `css_path` and `client_js_path` are still accepted as explicit overrides.
+
+## Milestone 4 Notes (Dev Mode + Routing Context + API Bridge)
+
+HydraStack now supports a development mode where Drogon continues SSR in C++/V8 while
+frontend requests can be proxied to Vite.
+
+`app/config.json` plugin keys:
+
+- `dev_mode.enabled`: enable dev mode.
+- `dev_mode.proxy_assets`: proxy `/assets/*`, `/@vite/*`, `/src/*`, `/node_modules/*` to Vite.
+- `dev_mode.vite_origin`: Vite server origin (default `http://127.0.0.1:5174`).
+- `dev_mode.css_path`: dev stylesheet path (default `/src/styles.css`).
+- `dev_mode.inject_hmr_client`: inject `@vite/client` into HTML shell.
+- `dev_mode.client_entry_path`: module entry used for client hydration in dev.
+- `api_bridge_enabled`: enable `globalThis.hydra.fetch(...)` bridge in SSR runtime.
+
+SSR request context:
+
+- C++ now calls `globalThis.render(url, propsJson, requestContextJson)`.
+- `requestContextJson` includes `url`, `routePath`, `pathWithQuery`, `routeUrl`, `path`, `query`,
+  `method`, and `headers`.
+- UI receives this as `initialProps.__hydra_request`.
+
+Demo props naming:
+
+- `pathWithQuery` is the canonical key for app props.
+- Snake_case aliases have been removed from the public props/request-context API.
+
+API bridge contract:
+
+- `globalThis.hydra.fetch({ method, path, query, headers, body })`
+- returns `{ status, body, headers }`
+- default demo handlers:
+  - `GET /hydra/internal/health` -> `200 ok`
+  - `* /hydra/internal/echo` -> echoes request body
+
+## Test Route
+
+Use this route to validate the app and hot-restart behavior:
+
+- `GET /__hydra/test`
+
+It returns JSON including:
+
+- `ok`
+- `path`
+- `query`
+- `process_started_ms` (changes after app restart)

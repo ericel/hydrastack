@@ -6,11 +6,14 @@
 #include <condition_variable>
 #include <fstream>
 #include <iterator>
+#include <json/reader.h>
+#include <json/writer.h>
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 
 namespace hydra {
@@ -116,10 +119,29 @@ v8::Local<v8::String> toV8String(v8::Isolate *isolate, const std::string &value)
     return out;
 }
 
+bool parseJsonString(const std::string &json, Json::Value *out) {
+    if (out == nullptr) {
+        return false;
+    }
+
+    Json::CharReaderBuilder builder;
+    std::string errors;
+    std::istringstream stream(json);
+    return Json::parseFromStream(builder, stream, out, &errors);
+}
+
+std::string toCompactJsonString(const Json::Value &value) {
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "";
+    builder["commentStyle"] = "None";
+    return Json::writeString(builder, value);
+}
+
 }  // namespace
 
-V8SsrRuntime::V8SsrRuntime(std::string bundlePath)
+V8SsrRuntime::V8SsrRuntime(std::string bundlePath, FetchBridge fetchBridge)
     : bundlePath_(std::move(bundlePath)),
+      fetchBridge_(std::move(fetchBridge)),
       allocator_(v8::ArrayBuffer::Allocator::NewDefaultAllocator()) {
     v8::Isolate::CreateParams createParams;
     createParams.array_buffer_allocator = allocator_.get();
@@ -138,6 +160,7 @@ V8SsrRuntime::V8SsrRuntime(std::string bundlePath)
             v8::HandleScope handleScope(isolate_);
             auto context = v8::Context::New(isolate_);
             context_.Reset(isolate_, context);
+            isolate_->SetData(0, this);
             loadBundle();
         }
 
@@ -157,6 +180,74 @@ V8SsrRuntime::~V8SsrRuntime() {
     }
 }
 
+void V8SsrRuntime::hydraFetchCallback(
+    const v8::FunctionCallbackInfo<v8::Value> &info) {
+    auto *isolate = info.GetIsolate();
+    auto *runtime = static_cast<V8SsrRuntime *>(isolate->GetData(0));
+    if (runtime == nullptr) {
+        info.GetReturnValue().Set(toV8String(
+            isolate,
+            R"({"status":500,"body":"Hydra runtime unavailable"})"));
+        return;
+    }
+
+    std::string requestJson = "{}";
+    if (info.Length() > 0) {
+        v8::String::Utf8Value requestUtf8(isolate, info[0]);
+        if (*requestUtf8) {
+            requestJson = *requestUtf8;
+        }
+    }
+
+    BridgeRequest request;
+    Json::Value parsedRequest;
+    if (parseJsonString(requestJson, &parsedRequest) && parsedRequest.isObject()) {
+        request.method = parsedRequest.get("method", "GET").asString();
+        request.path = parsedRequest.get("path", "").asString();
+        request.query = parsedRequest.get("query", "").asString();
+        if (parsedRequest.isMember("body")) {
+            if (parsedRequest["body"].isString()) {
+                request.body = parsedRequest["body"].asString();
+            } else {
+                request.body = toCompactJsonString(parsedRequest["body"]);
+            }
+        }
+        if (parsedRequest.isMember("headers") && parsedRequest["headers"].isObject()) {
+            for (const auto &headerName : parsedRequest["headers"].getMemberNames()) {
+                request.headers.emplace(headerName,
+                                        parsedRequest["headers"][headerName].asString());
+            }
+        }
+    }
+
+    BridgeResponse response;
+    try {
+        if (runtime->fetchBridge_) {
+            response = runtime->fetchBridge_(request);
+        } else {
+            response.status = 501;
+            response.body = "Hydra API bridge is not configured";
+        }
+    } catch (const std::exception &ex) {
+        response.status = 500;
+        response.body = ex.what();
+    } catch (...) {
+        response.status = 500;
+        response.body = "Unknown Hydra API bridge error";
+    }
+
+    Json::Value responseJson(Json::objectValue);
+    responseJson["status"] = response.status;
+    responseJson["body"] = response.body;
+    Json::Value responseHeaders(Json::objectValue);
+    for (const auto &[headerName, headerValue] : response.headers) {
+        responseHeaders[headerName] = headerValue;
+    }
+    responseJson["headers"] = std::move(responseHeaders);
+
+    info.GetReturnValue().Set(toV8String(isolate, toCompactJsonString(responseJson)));
+}
+
 void V8SsrRuntime::loadBundle() {
     const std::string bundleSource = readFile(bundlePath_);
 
@@ -166,6 +257,14 @@ void V8SsrRuntime::loadBundle() {
     auto context = context_.Get(isolate_);
     v8::Context::Scope contextScope(context);
     v8::TryCatch tryCatch(isolate_);
+
+    auto fetchFunction = v8::Function::New(context, &V8SsrRuntime::hydraFetchCallback);
+    if (fetchFunction.IsEmpty() ||
+        !context->Global()
+             ->Set(context, toV8String(isolate_, "__hydraFetch"), fetchFunction.ToLocalChecked())
+             .FromMaybe(false)) {
+        throw std::runtime_error("Failed to install Hydra API bridge function");
+    }
 
     const char *bootstrapSource = R"(
 if (typeof globalThis.global === "undefined") globalThis.global = globalThis;
@@ -213,6 +312,26 @@ if (typeof globalThis.setTimeout === "undefined") {
 if (typeof globalThis.clearTimeout === "undefined") {
   globalThis.clearTimeout = () => {};
 }
+if (typeof globalThis.hydra === "undefined") {
+  globalThis.hydra = {};
+}
+if (typeof globalThis.hydra.fetch !== "function") {
+  globalThis.hydra.fetch = (request = {}) => {
+    const payload = typeof request === "string" ? request : JSON.stringify(request);
+    const raw = globalThis.__hydraFetch(payload);
+    if (typeof raw === "string") {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return { status: 500, body: "Invalid bridge response", headers: {} };
+      }
+    }
+    return raw;
+  };
+}
+if (typeof globalThis.fetch !== "function") {
+  globalThis.fetch = (request = {}) => Promise.resolve(globalThis.hydra.fetch(request));
+}
 )";
     v8::Local<v8::Script> bootstrapScript;
     if (!v8::Script::Compile(context, toV8String(isolate_, bootstrapSource))
@@ -237,6 +356,7 @@ if (typeof globalThis.clearTimeout === "undefined") {
 
 std::string V8SsrRuntime::render(const std::string &url,
                                  const std::string &propsJson,
+                                 const std::string &requestContextJson,
                                  std::uint64_t timeoutMs) {
     v8::Locker locker(isolate_);
     v8::Isolate::Scope isolateScope(isolate_);
@@ -250,13 +370,15 @@ std::string V8SsrRuntime::render(const std::string &url,
     v8::Local<v8::Value> renderValue;
     if (!context->Global()->Get(context, renderName).ToLocal(&renderValue) ||
         !renderValue->IsFunction()) {
-        throw std::runtime_error("SSR bundle missing globalThis.render(url, propsJson)");
+        throw std::runtime_error(
+            "SSR bundle missing globalThis.render(url, propsJson, requestContextJson)");
     }
 
     auto renderFunc = v8::Local<v8::Function>::Cast(renderValue);
-    v8::Local<v8::Value> args[2] = {
+    v8::Local<v8::Value> args[3] = {
         toV8String(isolate_, url),
         toV8String(isolate_, propsJson),
+        toV8String(isolate_, requestContextJson),
     };
 
     v8::Local<v8::Value> result;

@@ -53,6 +53,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    server: {
+      host: "127.0.0.1",
+      port: 5174,
+      strictPort: true
+    },
     define: {
       "process.env.NODE_ENV": JSON.stringify("production")
     },

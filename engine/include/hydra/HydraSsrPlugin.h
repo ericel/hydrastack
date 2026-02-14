@@ -37,6 +37,7 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
     std::string cssPath_ = "/assets/app.css";
     std::string clientJsPath_ = "/assets/client.js";
     std::size_t isolatePoolSize_ = 0;
+    std::uint64_t isolateAcquireTimeoutMs_ = 0;
     std::uint64_t renderTimeoutMs_ = 50;
     bool wrapFragment_ = false;
 

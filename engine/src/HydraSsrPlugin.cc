@@ -34,10 +34,13 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
     ssrBundlePath_ = config.get("ssr_bundle_path", "./public/assets/ssr-bundle.js").asString();
     cssPath_ = config.get("css_path", "/assets/app.css").asString();
     clientJsPath_ = config.get("client_js_path", "/assets/client.js").asString();
+    isolateAcquireTimeoutMs_ = config.get("acquire_timeout_ms", 0).asUInt64();
     renderTimeoutMs_ = config.get("render_timeout_ms", 50).asUInt64();
     wrapFragment_ = config.get("wrap_fragment", false).asBool();
 
-    const auto configuredPoolSize = config.get("isolate_pool_size", 0).asUInt();
+    const auto configuredPoolSize = config.isMember("pool_size")
+                                        ? config["pool_size"].asUInt()
+                                        : config.get("isolate_pool_size", 0).asUInt();
     const auto threadCount = std::max<std::size_t>(1, drogon::app().getThreadNum());
     isolatePoolSize_ =
         configuredPoolSize > 0 ? static_cast<std::size_t>(configuredPoolSize) : threadCount;
@@ -52,7 +55,8 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
     }
 
     LOG_INFO << "HydraSsrPlugin initialized with bundle: " << ssrBundlePath_
-             << ", pool size: " << isolatePoolSize_;
+             << ", pool size: " << isolatePoolSize_
+             << ", acquire timeout(ms): " << isolateAcquireTimeoutMs_;
 }
 
 void HydraSsrPlugin::shutdown() {
@@ -78,23 +82,32 @@ std::string HydraSsrPlugin::render(const drogon::HttpRequestPtr &req,
                                 : (req ? req->path() : std::string("/"));
 
     try {
-        auto lease = isolatePool_->acquire();
-        auto html = lease->render(url, propsJson, isolatePool_->renderTimeoutMs());
+        auto lease = isolatePool_->acquire(isolateAcquireTimeoutMs_);
+        try {
+            auto html = lease->render(url, propsJson, isolatePool_->renderTimeoutMs());
 
-        if (wrapFragment_ && !isLikelyFullDocument(html)) {
-            HtmlShellAssets assets;
-            assets.cssPath = cssPath_;
-            assets.clientJsPath = clientJsPath_;
-            return HtmlShell::wrap(
-                html,
-                propsJson,
-                assets);
+            if (wrapFragment_ && !isLikelyFullDocument(html)) {
+                HtmlShellAssets assets;
+                assets.cssPath = cssPath_;
+                assets.clientJsPath = clientJsPath_;
+                return HtmlShell::wrap(
+                    html,
+                    propsJson,
+                    assets);
+            }
+
+            return html;
+        } catch (...) {
+            lease.markForRecycle();
+            throw;
         }
-
-        return html;
     } catch (const std::exception &ex) {
         LOG_ERROR << "HydraStack render failed for url=" << url << ": " << ex.what();
         return HtmlShell::errorPage(ex.what());
+    } catch (...) {
+        LOG_ERROR << "HydraStack render failed for url=" << url
+                  << ": unknown exception";
+        return HtmlShell::errorPage("Unknown SSR runtime error");
     }
 }
 

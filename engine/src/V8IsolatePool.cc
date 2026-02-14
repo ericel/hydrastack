@@ -1,6 +1,8 @@
 #include "hydra/V8IsolatePool.h"
 
 #include <algorithm>
+#include <chrono>
+#include <stdexcept>
 #include <utility>
 
 namespace hydra {
@@ -41,32 +43,50 @@ V8SsrRuntime &V8IsolatePool::Lease::runtime() const {
     return *pool_->runtimes_.at(runtimeIndex_);
 }
 
+void V8IsolatePool::Lease::markForRecycle() {
+    recycle_ = true;
+}
+
 void V8IsolatePool::Lease::release() {
     if (pool_ == nullptr) {
         return;
     }
 
-    pool_->release(runtimeIndex_);
+    if (recycle_) {
+        pool_->recycle(runtimeIndex_);
+    } else {
+        pool_->release(runtimeIndex_);
+    }
     pool_ = nullptr;
     runtimeIndex_ = 0;
+    recycle_ = false;
 }
 
 V8IsolatePool::V8IsolatePool(std::size_t size,
                              std::string bundlePath,
                              std::uint64_t renderTimeoutMs)
-    : renderTimeoutMs_(renderTimeoutMs) {
+    : bundlePath_(std::move(bundlePath)), renderTimeoutMs_(renderTimeoutMs) {
     const std::size_t poolSize = std::max<std::size_t>(1, size);
     runtimes_.reserve(poolSize);
 
     for (std::size_t i = 0; i < poolSize; ++i) {
-        runtimes_.push_back(std::make_unique<V8SsrRuntime>(bundlePath));
+        runtimes_.push_back(std::make_unique<V8SsrRuntime>(bundlePath_));
         availableRuntimes_.push(i);
     }
 }
 
-V8IsolatePool::Lease V8IsolatePool::acquire() {
+V8IsolatePool::Lease V8IsolatePool::acquire(std::uint64_t acquireTimeoutMs) {
     std::unique_lock<std::mutex> lock(mutex_);
-    cv_.wait(lock, [this] { return !availableRuntimes_.empty(); });
+    if (acquireTimeoutMs == 0) {
+        cv_.wait(lock, [this] { return !availableRuntimes_.empty(); });
+    } else {
+        const auto ready = cv_.wait_for(lock,
+                                        std::chrono::milliseconds(acquireTimeoutMs),
+                                        [this] { return !availableRuntimes_.empty(); });
+        if (!ready) {
+            throw std::runtime_error("Timed out waiting for available V8 isolate");
+        }
+    }
 
     const std::size_t index = availableRuntimes_.front();
     availableRuntimes_.pop();
@@ -80,6 +100,24 @@ std::uint64_t V8IsolatePool::renderTimeoutMs() const {
 void V8IsolatePool::release(std::size_t runtimeIndex) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        availableRuntimes_.push(runtimeIndex);
+    }
+    cv_.notify_one();
+}
+
+void V8IsolatePool::recycle(std::size_t runtimeIndex) noexcept {
+    std::unique_ptr<V8SsrRuntime> replacement;
+    try {
+        replacement = std::make_unique<V8SsrRuntime>(bundlePath_);
+    } catch (...) {
+        // Keep the existing runtime if recycle failed.
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (replacement) {
+            runtimes_[runtimeIndex] = std::move(replacement);
+        }
         availableRuntimes_.push(runtimeIndex);
     }
     cv_.notify_one();

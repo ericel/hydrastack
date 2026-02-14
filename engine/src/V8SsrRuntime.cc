@@ -2,11 +2,15 @@
 
 #include <v8.h>
 
+#include <chrono>
+#include <condition_variable>
 #include <fstream>
 #include <iterator>
+#include <mutex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace hydra {
@@ -21,6 +25,52 @@ class IsolateCleanup {
             isolate->Dispose();
         }
     }
+};
+
+class RenderWatchdog {
+  public:
+    RenderWatchdog(v8::Isolate *isolate, std::uint64_t timeoutMs)
+        : isolate_(isolate), timeoutMs_(timeoutMs) {
+        if (timeoutMs_ == 0) {
+            return;
+        }
+
+        thread_ = std::thread([this] {
+            std::unique_lock<std::mutex> lock(mutex_);
+            const auto stopped = cv_.wait_for(lock,
+                                              std::chrono::milliseconds(timeoutMs_),
+                                              [this] { return done_; });
+            if (!stopped) {
+                isolate_->TerminateExecution();
+            }
+        });
+    }
+
+    ~RenderWatchdog() {
+        stop();
+    }
+
+    RenderWatchdog(const RenderWatchdog &) = delete;
+    RenderWatchdog &operator=(const RenderWatchdog &) = delete;
+
+    void stop() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            done_ = true;
+        }
+        cv_.notify_all();
+        if (thread_.joinable()) {
+            thread_.join();
+        }
+    }
+
+  private:
+    v8::Isolate *isolate_ = nullptr;
+    std::uint64_t timeoutMs_ = 0;
+    std::thread thread_;
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    bool done_ = false;
 };
 
 std::string readFile(const std::string &path) {
@@ -83,6 +133,7 @@ V8SsrRuntime::V8SsrRuntime(std::string bundlePath)
 
     try {
         {
+            v8::Locker locker(isolate_);
             v8::Isolate::Scope isolateScope(isolate_);
             v8::HandleScope handleScope(isolate_);
             auto context = v8::Context::New(isolate_);
@@ -109,6 +160,7 @@ V8SsrRuntime::~V8SsrRuntime() {
 void V8SsrRuntime::loadBundle() {
     const std::string bundleSource = readFile(bundlePath_);
 
+    v8::Locker locker(isolate_);
     v8::Isolate::Scope isolateScope(isolate_);
     v8::HandleScope handleScope(isolate_);
     auto context = context_.Get(isolate_);
@@ -186,13 +238,13 @@ if (typeof globalThis.clearTimeout === "undefined") {
 std::string V8SsrRuntime::render(const std::string &url,
                                  const std::string &propsJson,
                                  std::uint64_t timeoutMs) {
-    (void)timeoutMs;
-
+    v8::Locker locker(isolate_);
     v8::Isolate::Scope isolateScope(isolate_);
     v8::HandleScope handleScope(isolate_);
     auto context = context_.Get(isolate_);
     v8::Context::Scope contextScope(context);
     v8::TryCatch tryCatch(isolate_);
+    RenderWatchdog watchdog(isolate_, timeoutMs);
 
     auto renderName = toV8String(isolate_, "render");
     v8::Local<v8::Value> renderValue;
@@ -211,6 +263,11 @@ std::string V8SsrRuntime::render(const std::string &url,
     if (!renderFunc
              ->Call(context, context->Global(), static_cast<int>(std::size(args)), args)
              .ToLocal(&result)) {
+        if (tryCatch.HasTerminated()) {
+            isolate_->CancelTerminateExecution();
+            throw std::runtime_error("SSR render exceeded timeout of " +
+                                     std::to_string(timeoutMs) + "ms");
+        }
         throw std::runtime_error("SSR render threw exception: " +
                                  formatException(isolate_, tryCatch));
     }

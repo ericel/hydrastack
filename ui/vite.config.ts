@@ -9,6 +9,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    define: {
+      "process.env.NODE_ENV": JSON.stringify("production")
+    },
     build: {
       outDir,
       emptyOutDir: false,

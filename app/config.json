@@ -1,0 +1,26 @@
+{
+  "listeners": [
+    {
+      "address": "0.0.0.0",
+      "port": 8070,
+      "https": false
+    }
+  ],
+  "threads_num": 0,
+  "run_as_daemon": false,
+  "document_root": "./public",
+  "plugins": [
+    {
+      "name": "hydra::HydraSsrPlugin",
+      "dependencies": [],
+      "config": {
+        "ssr_bundle_path": "./public/assets/ssr-bundle.js",
+        "isolate_pool_size": 0,
+        "render_timeout_ms": 50,
+        "css_path": "/assets/app.css",
+        "client_js_path": "/assets/client.js",
+        "wrap_fragment": false
+      }
+    }
+  ]
+}

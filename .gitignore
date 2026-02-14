@@ -1,0 +1,5 @@
+/build/
+/build-debug/
+/build-homebrew/
+/ui/node_modules/
+/public/assets/*.map

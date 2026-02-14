@@ -1,0 +1,39 @@
+ojobasi@Ojongs-MacBook-Pro ~ % brew install v8
+==> Fetching downloads for: v8
+✔︎ Bottle Manifest v8 (14.5.201.7)                    Downloaded   14.1KB/ 14.1KB
+✔︎ Bottle v8 (14.5.201.7)                             Downloaded   18.5MB/ 18.5MB
+==> Pouring v8--14.5.201.7.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/v8/14.5.201.7: 214 files, 70.9MB
+==> Running `brew cleanup v8`...
+Disable this behaviour by setting `HOMEBREW_NO_INSTALL_CLEANUP=1`.
+Hide these hints with `HOMEBREW_NO_ENV_HINTS=1` (see `man brew`).
+ojobasi@Ojongs-MacBook-Pro ~ % brew --prefix v8
+/opt/homebrew/opt/v8
+ojobasi@Ojongs-MacBook-Pro ~ % V8P="$(brew --prefix v8)"
+echo "$V8P"
+ls "$V8P/include" | head
+ls "$V8P/lib" | head
+/opt/homebrew/opt/v8
+cppgc
+libplatform
+v8-array-buffer.h
+v8-callbacks.h
+v8-container.h
+v8-context.h
+v8-cpp-heap-external.h
+v8-cppgc.h
+v8-data.h
+v8-date.h
+libv8.dylib
+libv8_libbase.dylib
+libv8_libplatform.dylib
+ojobasi@Ojongs-MacBook-Pro ~ % 
+
+
+cd /Applications/dev/cplusplus/hydrastack
+V8P="$(brew --prefix v8)"
+cmake -S . -B build \
+  -DV8_INCLUDE_DIR="$V8P/include" \
+  -DV8_LIBRARIES="$V8P/lib/libv8.dylib;$V8P/lib/libv8_libplatform.dylib;$V8P/lib/libv8_libbase.dylib"
+cmake --build build -j
+./build/hydra_demo

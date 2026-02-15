@@ -14,6 +14,11 @@
       "name": "hydra::HydraSsrPlugin",
       "dependencies": [],
       "config": {
+        "asset_mode": "dev",
+        "css_obfuscation": {
+          "enabled": false,
+          "emit_classmap": true
+        },
         "ssr_bundle_path": "./public/assets/ssr-bundle.js",
         "asset_manifest_path": "./public/assets/manifest.json",
         "asset_public_prefix": "/assets",
@@ -21,6 +26,13 @@
         "pool_size": 4,
         "acquire_timeout_ms": 200,
         "render_timeout_ms": 50,
+        "i18n": {
+          "defaultLocale": "en",
+          "supportedLocales": ["en", "fr", "ko"],
+          "queryParam": "lang",
+          "cookieName": "hydra_lang",
+          "includeLocaleCandidates": true
+        },
         "request_context": {
           "include_cookies": true,
           "includeCookieMap": true,

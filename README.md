@@ -165,6 +165,10 @@ frontend requests can be proxied to Vite.
 
 `app/config.json` plugin keys:
 
+- `asset_mode`: explicit asset pipeline mode.
+  - `prod`: use manifest/static resolved assets (hashed output).
+  - `dev`: use Vite dev assets/HMR paths.
+  - `auto`: backward-compatible behavior inferred from `dev_mode.enabled`.
 - `dev_mode.enabled`: enable dev mode.
 - `dev_mode.proxy_assets`: proxy `/assets/*`, `/@vite/*`, `/src/*`, `/node_modules/*` to Vite.
 - `dev_mode.vite_origin`: Vite server origin (default `http://127.0.0.1:5174`).
@@ -173,17 +177,99 @@ frontend requests can be proxied to Vite.
 - `dev_mode.client_entry_path`: module entry used for client hydration in dev.
 - `api_bridge_enabled`: enable `globalThis.hydra.fetch(...)` bridge in SSR runtime.
 
+Asset mode precedence:
+
+1. explicit `asset_mode` (recommended)
+2. legacy `dev_mode.enabled` (used only when `asset_mode=auto` or missing)
+
+### Milestone 5.4 Notes (CSS Obfuscation Build Option)
+
+HydraStack supports optional build-time CSS class mangling (advanced mode).
+
+Plugin config:
+
+```json
+"css_obfuscation": {
+  "enabled": true,
+  "emit_classmap": true
+}
+```
+
+Behavior:
+
+- When enabled, `ui` build rewrites static JSX `className` tokens to mangled names.
+- Generated CSS selectors are rewritten to the same mangled names.
+- `public/assets/classmap.json` is emitted when `emit_classmap=true`.
+- Runtime config does not perform obfuscation; this is build-time only.
+
+Build picks config from:
+
+1. `HYDRA_UI_CONFIG_PATH` (if set)
+2. `HYDRA_CONFIG_PATH` (if set)
+3. fallback `app/config.json`
+
 SSR request context:
 
 - C++ now calls `globalThis.render(url, propsJson, requestContextJson)`.
 - `requestContextJson` includes `url`, `routePath`, `pathWithQuery`, `routeUrl`, `path`, `query`,
-  `method`, and `headers`.
+  `method`, `headers`, and `locale`.
 - UI receives this as `initialProps.__hydra_request`.
 
 Demo props naming:
 
 - `pathWithQuery` is the canonical key for app props.
 - Snake_case aliases have been removed from the public props/request-context API.
+
+### Milestone 5.1 Notes (I18n Locale Resolution)
+
+HydraStack can resolve request locale at the framework layer and inject it into SSR context.
+
+`i18n` plugin config keys:
+
+- `defaultLocale`: fallback locale (default `en`)
+- `supportedLocales`: ordered list of supported locales
+- `queryParam`: locale query key (default `lang`)
+- `cookieName`: locale cookie key (default `hydra_lang`)
+- `includeLocaleCandidates`: include fallback candidates in `__hydra_request.localeCandidates`
+
+Locale files (Django-style layout):
+
+- `ui/locales/en/LC_MESSAGES/messages.po`
+- `ui/locales/fr/LC_MESSAGES/messages.po`
+- `ui/locales/ko/LC_MESSAGES/messages.po`
+
+Hydra CLI (Django-like):
+
+- `./hydra makemessages -l fr`
+- `./hydra makemessages --all`
+- `./hydra compilemessages -l fr`
+- `./hydra compilemessages --all`
+
+Notes:
+
+- `makemessages` scans `ui/src` for `_("...")` and `gettext("...")`.
+- It creates/updates `ui/locales/<locale>/LC_MESSAGES/messages.po`.
+- `compilemessages` compiles `.po` into `.mo` at the same location.
+- Locale args accept Django-style names such as `zh_Hans`.
+
+React translation usage:
+
+- Use `createGettext(locale)` from `ui/src/i18n/gettext.ts`.
+- Use either `gettext("key")` or `_("key")` style (same function).
+- Demo page uses keys like `hello_from_hydrastack`, `route`, `hydrated_clicks`.
+
+Resolution order:
+
+1. cookie (`cookieName`)
+2. query parameter (`queryParam`)
+3. `Accept-Language` (q-values honored)
+4. `defaultLocale`
+
+Normalization and fallback:
+
+- locale tags are normalized (for example `fr_CA` -> `fr-ca`)
+- region fallback is applied (`fr-ca` -> `fr`)
+- unsupported locales fall back to `defaultLocale`
 
 API bridge contract:
 

@@ -3319,7 +3319,176 @@
   l.renderToNodeStream;
   l.renderToStaticNodeStream;
   s.renderToReadableStream;
-  function asString(value, fallback) {
+  const __vite_glob_0_0 = '# HydraStack UI translations (en)\nmsgid ""\nmsgstr ""\n"Language: en\\n"\n"Content-Type: text/plain; charset=UTF-8\\n"\n\nmsgid "bridge_status"\nmsgstr "Bridge status"\n\nmsgid "full_url"\nmsgstr "Full URL"\n\nmsgid "hello_from_hydrastack"\nmsgstr "Hello from HydraStack app"\n\nmsgid "hydrated_clicks"\nmsgstr "Hydrated clicks"\n\nmsgid "isolate_counter"\nmsgstr "Isolate counter"\n\nmsgid "locale"\nmsgstr "Locale"\n\nmsgid "locale_candidates"\nmsgstr "Locale candidates"\n\nmsgid "page_id"\nmsgstr "Page ID"\n\nmsgid "post_detail_title"\nmsgstr "Post detail"\n\nmsgid "post_id"\nmsgstr "Post ID"\n\nmsgid "query_params"\nmsgstr "Query params"\n\nmsgid "route"\nmsgstr "Route"\n\nmsgid "ssr_burn"\nmsgstr "SSR burn"\n';
+  const __vite_glob_0_1 = `# HydraStack UI translations (fr)
+msgid ""
+msgstr ""
+"Language: fr\\n"
+"Content-Type: text/plain; charset=UTF-8\\n"
+
+msgid "bridge_status"
+msgstr "Etat bridge"
+
+msgid "full_url"
+msgstr "URL complete"
+
+msgid "hello_from_hydrastack"
+msgstr "Bonjour depuis HydraStack"
+
+msgid "hydrated_clicks"
+msgstr "Clics hydrates"
+
+msgid "isolate_counter"
+msgstr "Compteur d'isolate"
+
+msgid "locale"
+msgstr "Langue"
+
+msgid "locale_candidates"
+msgstr "Candidats de langue"
+
+msgid "page_id"
+msgstr "ID de page"
+
+msgid "post_detail_title"
+msgstr "Detail du post"
+
+msgid "post_id"
+msgstr "ID du post"
+
+msgid "query_params"
+msgstr "Parametres de requete"
+
+msgid "route"
+msgstr "Route"
+
+msgid "ssr_burn"
+msgstr "Charge SSR"
+`;
+  const __vite_glob_0_2 = '# HydraStack UI translations (ko)\nmsgid ""\nmsgstr ""\n"Language: ko\\n"\n"Content-Type: text/plain; charset=UTF-8\\n"\n\nmsgid "bridge_status"\nmsgstr "Bridge status"\n\nmsgid "full_url"\nmsgstr "Full URL"\n\nmsgid "hello_from_hydrastack"\nmsgstr "Annyeong from HydraStack"\n\nmsgid "hydrated_clicks"\nmsgstr "Hydrated clicks"\n\nmsgid "isolate_counter"\nmsgstr "Isolate counter"\n\nmsgid "locale"\nmsgstr "Locale"\n\nmsgid "locale_candidates"\nmsgstr "Locale candidates"\n\nmsgid "page_id"\nmsgstr "Page ID"\n\nmsgid "post_detail_title"\nmsgstr "Post detail"\n\nmsgid "post_id"\nmsgstr "Post ID"\n\nmsgid "query_params"\nmsgstr "Query params"\n\nmsgid "route"\nmsgstr "Route"\n\nmsgid "ssr_burn"\nmsgstr "SSR burn"\n';
+  const FALLBACK_LOCALE = "en";
+  function normalizeLocale(locale) {
+    return locale.trim().replaceAll("_", "-").toLowerCase();
+  }
+  function decodePoLiteral(value) {
+    const trimmed = value.trim();
+    if (!trimmed.startsWith('"') || !trimmed.endsWith('"')) {
+      return "";
+    }
+    const quoted = trimmed.slice(1, -1);
+    return quoted.replaceAll("\\\\", "\\").replaceAll('\\"', '"').replaceAll("\\n", "\n").replaceAll("\\r", "\r").replaceAll("\\t", "	");
+  }
+  function parsePo(rawPo) {
+    const catalog = {};
+    let currentMsgId = [];
+    let currentMsgStr = [];
+    let mode = null;
+    const flush = () => {
+      const msgid = currentMsgId.join("");
+      const msgstr = currentMsgStr.join("");
+      if (msgid) {
+        catalog[msgid] = msgstr || msgid;
+      }
+      currentMsgId = [];
+      currentMsgStr = [];
+      mode = null;
+    };
+    for (const line of rawPo.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        flush();
+        continue;
+      }
+      if (trimmed.startsWith("#")) {
+        continue;
+      }
+      if (trimmed.startsWith("msgid ")) {
+        flush();
+        currentMsgId.push(decodePoLiteral(trimmed.slice("msgid ".length)));
+        mode = "msgid";
+        continue;
+      }
+      if (trimmed.startsWith("msgstr ")) {
+        currentMsgStr.push(decodePoLiteral(trimmed.slice("msgstr ".length)));
+        mode = "msgstr";
+        continue;
+      }
+      if (trimmed.startsWith("msgstr[0] ")) {
+        currentMsgStr.push(decodePoLiteral(trimmed.slice("msgstr[0] ".length)));
+        mode = "msgstr";
+        continue;
+      }
+      if (trimmed.startsWith("msgctxt ") || trimmed.startsWith("msgid_plural ")) {
+        continue;
+      }
+      if (trimmed.startsWith('"')) {
+        const segment = decodePoLiteral(trimmed);
+        if (mode === "msgid") {
+          currentMsgId.push(segment);
+        } else if (mode === "msgstr") {
+          currentMsgStr.push(segment);
+        }
+        continue;
+      }
+    }
+    flush();
+    return catalog;
+  }
+  function localeCandidateChain(locale) {
+    const normalized = normalizeLocale(locale);
+    if (!normalized) {
+      return [FALLBACK_LOCALE];
+    }
+    const candidates = [];
+    let current = normalized;
+    while (current) {
+      if (!candidates.includes(current)) {
+        candidates.push(current);
+      }
+      const separator = current.lastIndexOf("-");
+      if (separator < 0) {
+        break;
+      }
+      current = current.slice(0, separator);
+    }
+    if (!candidates.includes(FALLBACK_LOCALE)) {
+      candidates.push(FALLBACK_LOCALE);
+    }
+    return candidates;
+  }
+  const RAW_CATALOG_FILES = /* @__PURE__ */ Object.assign({
+    "../../locales/en/LC_MESSAGES/messages.po": __vite_glob_0_0,
+    "../../locales/fr/LC_MESSAGES/messages.po": __vite_glob_0_1,
+    "../../locales/ko/LC_MESSAGES/messages.po": __vite_glob_0_2
+  });
+  function extractLocaleFromPath(path) {
+    const match = path.match(/\/locales\/([^/]+)\/LC_MESSAGES\/messages\.po$/);
+    if (!match || !match[1]) {
+      return "";
+    }
+    return normalizeLocale(match[1]);
+  }
+  const CATALOGS = {};
+  for (const [path, rawCatalog] of Object.entries(RAW_CATALOG_FILES)) {
+    const locale = extractLocaleFromPath(path);
+    if (!locale) {
+      continue;
+    }
+    CATALOGS[locale] = parsePo(rawCatalog);
+  }
+  function createGettext(locale) {
+    const localeCandidates = localeCandidateChain(locale);
+    const resolvedLocale = localeCandidates.find((candidate) => CATALOGS[candidate]) ?? FALLBACK_LOCALE;
+    const catalog = CATALOGS[resolvedLocale] ?? CATALOGS[FALLBACK_LOCALE] ?? {};
+    const gettext = (msgid) => catalog[msgid] ?? msgid;
+    return {
+      locale: resolvedLocale,
+      localeCandidates,
+      gettext,
+      _: gettext
+    };
+  }
+  function asString$1(value, fallback) {
     return typeof value === "string" ? value : fallback;
   }
   function asNumber(value) {
@@ -3334,37 +3503,102 @@
     }
     return null;
   }
+  function asStringArray(value) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value.filter((item) => typeof item === "string");
+  }
+  function asStringRecord$1(value) {
+    if (typeof value !== "object" || value === null) {
+      return {};
+    }
+    const out = {};
+    for (const [key, raw] of Object.entries(value)) {
+      if (typeof raw === "string") {
+        out[key] = raw;
+      } else if (typeof raw === "number" || typeof raw === "boolean") {
+        out[key] = String(raw);
+      }
+    }
+    return out;
+  }
   function App({ url, initialProps }) {
     const [count, setCount] = React.useState(0);
-    const message = asString(initialProps.message, "HydraStack SSR active");
     const burnMs = asNumber(initialProps.__hydra_burn_ms);
     const isolateCounter = asNumber(initialProps.__hydra_isolate_counter);
     const requestContext = typeof initialProps.__hydra_request === "object" && initialProps.__hydra_request !== null ? initialProps.__hydra_request : {};
-    const requestUrl = asString(requestContext.url, "");
+    const routeContract = typeof initialProps.__hydra_route === "object" && initialProps.__hydra_route !== null ? initialProps.__hydra_route : {};
+    const pageId = asString$1(routeContract.pageId, asString$1(initialProps.page, "home"));
+    const routeParams = asStringRecord$1(routeContract.params);
+    const routeQuery = asStringRecord$1(routeContract.query);
+    const postId = asString$1(routeParams.postId, asString$1(initialProps.postId, ""));
+    const querySummary = Object.entries(routeQuery).map(([key, value]) => `${key}=${value}`).join(", ");
+    const requestLocale = asString$1(requestContext.locale, "en").toLowerCase();
+    const i18n = React.useMemo(() => createGettext(requestLocale), [requestLocale]);
+    const gettext = i18n.gettext;
+    const _ = i18n._;
+    const locale = i18n.locale;
+    const debugLocaleCandidates = asStringArray(requestContext.localeCandidates);
+    const localeCandidates = debugLocaleCandidates.length > 0 ? debugLocaleCandidates : i18n.localeCandidates;
+    const messageKey = asString$1(initialProps.messageKey, asString$1(initialProps.message_key, ""));
+    const messageFallback = asString$1(initialProps.message, "");
+    const message = messageKey ? gettext(messageKey) : messageFallback || _("hello_from_hydrastack");
+    const requestUrl = asString$1(requestContext.url, "");
     const bridgeStatus = asNumber(initialProps.__hydra_bridge_status);
-    const bridgeBody = asString(initialProps.__hydra_bridge_body, "");
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "min-h-screen bg-gradient-to-b from-deep-900 to-deep-700 text-slate-100", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "mx-auto max-w-3xl px-6 py-16", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm uppercase tracking-[0.2em] text-accent-500", children: "HydraStack" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "mt-4 text-4xl font-semibold", children: message }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-3 text-slate-300", children: [
-        "Route: ",
+    const bridgeBody = asString$1(initialProps.__hydra_bridge_body, "");
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "h1pkg8nd hlc8isu h7v5iiw h4nxqn9 h1uzrz90", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "h1nbwcgk h12rcolt h14aqli2 h10z0o3a", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "hiyw1ix haok3ij h65dh8x hs8wux1", children: "HydraStack" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "h1842365 h1n67ab7 hzd3ouy", children: message }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h1664vbc h1lod7sa", children: [
+        gettext("route"),
+        ": ",
         url
       ] }),
-      requestUrl ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs text-slate-400", children: [
-        "Full URL: ",
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h5r81rn", children: [
+        gettext("page_id"),
+        ": ",
+        pageId
+      ] }),
+      postId ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h5r81rn", children: [
+        gettext("post_id"),
+        ": ",
+        postId
+      ] }) : null,
+      querySummary ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h5r81rn", children: [
+        gettext("query_params"),
+        ": ",
+        querySummary
+      ] }) : null,
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h5r81rn", children: [
+        _("locale"),
+        ": ",
+        locale
+      ] }),
+      localeCandidates.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h5r81rn", children: [
+        gettext("locale_candidates"),
+        ": ",
+        localeCandidates.join(", ")
+      ] }) : null,
+      requestUrl ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h5r81rn", children: [
+        gettext("full_url"),
+        ": ",
         requestUrl
       ] }) : null,
-      burnMs !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs text-slate-400", children: [
-        "SSR burn: ",
+      burnMs !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h5r81rn", children: [
+        gettext("ssr_burn"),
+        ": ",
         burnMs,
         "ms"
       ] }) : null,
-      isolateCounter !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs text-slate-400", children: [
-        "Isolate counter: ",
+      isolateCounter !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h5r81rn", children: [
+        gettext("isolate_counter"),
+        ": ",
         isolateCounter
       ] }) : null,
-      bridgeStatus !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs text-slate-400", children: [
-        "Bridge status: ",
+      bridgeStatus !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h5r81rn", children: [
+        gettext("bridge_status"),
+        ": ",
         bridgeStatus,
         " ",
         bridgeBody ? `(${bridgeBody})` : ""
@@ -3372,16 +3606,62 @@
       /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "button",
         {
-          className: "mt-8 rounded-lg border border-accent-500 px-5 py-2 font-medium text-accent-500 transition hover:bg-accent-500 hover:text-deep-900",
+          className: "h14s6uuh hdm2rhw h8ouvcn h1jt3i66 h140qzt3 h1baehdp hzphq94 hs8wux1 h1a3o3j6 h1amq43h h1pk61jt",
           onClick: () => setCount((value) => value + 1),
           type: "button",
           children: [
-            "Hydrated clicks: ",
+            gettext("hydrated_clicks"),
+            ": ",
             count
           ]
         }
       )
     ] }) });
+  }
+  function asObject(value) {
+    if (typeof value !== "object" || value === null) {
+      return {};
+    }
+    return value;
+  }
+  function asString(value, fallback = "") {
+    return typeof value === "string" ? value : fallback;
+  }
+  function asStringRecord(value) {
+    const objectValue = asObject(value);
+    const out = {};
+    for (const [key, raw] of Object.entries(objectValue)) {
+      if (typeof raw === "string") {
+        out[key] = raw;
+      } else if (typeof raw === "number" || typeof raw === "boolean") {
+        out[key] = String(raw);
+      }
+    }
+    return out;
+  }
+  function resolveHydraRoute(fallbackUrl, props, requestContext = {}) {
+    const route = asObject(props.__hydra_route);
+    const fallbackPath = asString(requestContext.routePath, asString(props.path, "/")) || "/";
+    const fallbackRouteUrl = asString(requestContext.routeUrl, fallbackUrl) || fallbackPath;
+    const routePath = asString(route.routePath, fallbackPath) || "/";
+    const routeUrl = asString(route.routeUrl, fallbackRouteUrl) || routePath;
+    return {
+      pageId: asString(route.pageId, asString(props.page, "home")) || "home",
+      params: asStringRecord(route.params),
+      query: asStringRecord(route.query),
+      routePath,
+      routeUrl
+    };
+  }
+  function attachRouteContract(props, route) {
+    return {
+      ...props,
+      __hydra_route: route,
+      page: route.pageId
+    };
+  }
+  function ensureString(value, fallback = "") {
+    return asString(value, fallback);
   }
   function parseProps(propsJson) {
     if (!propsJson) {
@@ -3473,13 +3753,42 @@
   globalThis.render = (url, propsJson, requestContextJson) => {
     const parsedProps = parseProps(propsJson);
     const requestContext = parseRequestContext(requestContextJson);
-    const routeUrl = typeof requestContext.routeUrl === "string" && requestContext.routeUrl ? requestContext.routeUrl : url || "/";
     const propsWithContext = {
       ...parsedProps,
       __hydra_request: requestContext
     };
-    const hydratedProps = applySsrTestHooks(propsWithContext);
-    const appHtml = renderToString(/* @__PURE__ */ jsxRuntimeExports.jsx(App, { url: routeUrl, initialProps: hydratedProps }));
+    const route = resolveHydraRoute(url || "/", propsWithContext, requestContext);
+    let pageProps = attachRouteContract(propsWithContext, route);
+    switch (route.pageId) {
+      case "post_detail": {
+        const postId = route.params.postId ?? ensureString(pageProps.postId, "");
+        const postDetailMessageKey = ensureString(
+          pageProps.messageKey,
+          ensureString(pageProps.message_key, "post_detail_title")
+        );
+        pageProps = {
+          ...pageProps,
+          page: "post_detail",
+          postId,
+          messageKey: postDetailMessageKey
+        };
+        break;
+      }
+      case "home":
+      default:
+        const homeMessageKey = ensureString(
+          pageProps.messageKey,
+          ensureString(pageProps.message_key, "hello_from_hydrastack")
+        );
+        pageProps = {
+          ...pageProps,
+          page: "home",
+          messageKey: homeMessageKey
+        };
+        break;
+    }
+    const hydratedProps = applySsrTestHooks(pageProps);
+    const appHtml = renderToString(/* @__PURE__ */ jsxRuntimeExports.jsx(App, { url: route.routeUrl, initialProps: hydratedProps }));
     return appHtml;
   };
 })();

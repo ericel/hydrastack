@@ -56,7 +56,7 @@ trap cleanup EXIT INT TERM
 echo "[HydraDev] Starting Vite dev server..."
 (
   cd "$UI_DIR"
-  npm run dev
+  HYDRA_UI_CONFIG_PATH="$CONFIG_PATH" npm run dev
 ) &
 vite_pid=$!
 sleep 1
@@ -68,7 +68,7 @@ fi
 echo "[HydraDev] Starting SSR bundle watch (ui/src/entry-ssr.tsx -> public/assets/ssr-bundle.js)..."
 (
   cd "$UI_DIR"
-  npm run build:ssr:watch
+  HYDRA_UI_CONFIG_PATH="$CONFIG_PATH" npm run build:ssr:watch
 ) &
 ssr_watch_pid=$!
 sleep 1

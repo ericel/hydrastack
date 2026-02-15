@@ -1,6 +1,7 @@
 import { renderToString } from "react-dom/server";
 
 import App from "./App";
+import { attachRouteContract, ensureString, resolveHydraRoute, type JsonObject } from "./routeContract";
 
 declare global {
   interface Window {
@@ -94,8 +95,8 @@ function nextIsolateCounter(): number {
 }
 
 function applySsrTestHooks(
-  inputProps: Record<string, unknown>
-): Record<string, unknown> {
+  inputProps: JsonObject
+): JsonObject {
   const props = { ...inputProps };
   const testConfig =
     typeof props.__hydra_test === "object" && props.__hydra_test !== null
@@ -141,15 +142,44 @@ globalThis.render = (
 ): string => {
   const parsedProps = parseProps(propsJson);
   const requestContext = parseRequestContext(requestContextJson);
-  const routeUrl =
-    typeof requestContext.routeUrl === "string" && requestContext.routeUrl
-      ? requestContext.routeUrl
-      : url || "/";
-  const propsWithContext = {
+  const propsWithContext: JsonObject = {
     ...parsedProps,
     __hydra_request: requestContext
   };
-  const hydratedProps = applySsrTestHooks(propsWithContext);
-  const appHtml = renderToString(<App url={routeUrl} initialProps={hydratedProps} />);
+  const route = resolveHydraRoute(url || "/", propsWithContext, requestContext);
+  let pageProps = attachRouteContract(propsWithContext, route);
+
+  // Router contract: choose page by pageId from C++ (__hydra_route.pageId).
+  switch (route.pageId) {
+    case "post_detail": {
+      const postId = route.params.postId ?? ensureString(pageProps.postId, "");
+      const postDetailMessageKey = ensureString(
+        pageProps.messageKey,
+        ensureString(pageProps.message_key, "post_detail_title")
+      );
+      pageProps = {
+        ...pageProps,
+        page: "post_detail",
+        postId,
+        messageKey: postDetailMessageKey
+      };
+      break;
+    }
+    case "home":
+    default:
+      const homeMessageKey = ensureString(
+        pageProps.messageKey,
+        ensureString(pageProps.message_key, "hello_from_hydrastack")
+      );
+      pageProps = {
+        ...pageProps,
+        page: "home",
+        messageKey: homeMessageKey
+      };
+      break;
+  }
+
+  const hydratedProps = applySsrTestHooks(pageProps);
+  const appHtml = renderToString(<App url={route.routeUrl} initialProps={hydratedProps} />);
   return appHtml;
 };

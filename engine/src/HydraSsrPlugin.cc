@@ -47,6 +47,51 @@ std::string trimAsciiWhitespace(std::string value) {
     return value;
 }
 
+enum class AssetMode {
+    kAuto,
+    kDev,
+    kProd,
+};
+
+AssetMode parseAssetMode(std::string rawMode, bool *isValid = nullptr) {
+    rawMode = toLowerCopy(trimAsciiWhitespace(std::move(rawMode)));
+    if (rawMode.empty() || rawMode == "auto") {
+        if (isValid != nullptr) {
+            *isValid = true;
+        }
+        return AssetMode::kAuto;
+    }
+    if (rawMode == "dev") {
+        if (isValid != nullptr) {
+            *isValid = true;
+        }
+        return AssetMode::kDev;
+    }
+    if (rawMode == "prod") {
+        if (isValid != nullptr) {
+            *isValid = true;
+        }
+        return AssetMode::kProd;
+    }
+
+    if (isValid != nullptr) {
+        *isValid = false;
+    }
+    return AssetMode::kAuto;
+}
+
+const char *assetModeName(AssetMode mode) {
+    switch (mode) {
+        case AssetMode::kDev:
+            return "dev";
+        case AssetMode::kProd:
+            return "prod";
+        case AssetMode::kAuto:
+        default:
+            return "auto";
+    }
+}
+
 std::string firstHeaderToken(const std::string &value) {
     if (value.empty()) {
         return {};
@@ -58,6 +103,168 @@ std::string firstHeaderToken(const std::string &value) {
     }
 
     return trimAsciiWhitespace(value.substr(0, commaPos));
+}
+
+void appendUniqueString(std::vector<std::string> *values, const std::string &value) {
+    if (values == nullptr || value.empty()) {
+        return;
+    }
+    if (std::find(values->begin(), values->end(), value) != values->end()) {
+        return;
+    }
+    values->push_back(value);
+}
+
+std::string normalizeLocaleTag(std::string locale) {
+    locale = trimAsciiWhitespace(std::move(locale));
+    if (locale.empty()) {
+        return {};
+    }
+
+    for (auto &ch : locale) {
+        if (ch == '_') {
+            ch = '-';
+        }
+    }
+
+    locale = toLowerCopy(std::move(locale));
+
+    std::string normalized;
+    normalized.reserve(locale.size());
+    bool previousDash = false;
+    for (const auto ch : locale) {
+        const auto uch = static_cast<unsigned char>(ch);
+        if (std::isalnum(uch)) {
+            normalized.push_back(ch);
+            previousDash = false;
+            continue;
+        }
+        if (ch == '-' && !previousDash && !normalized.empty()) {
+            normalized.push_back(ch);
+            previousDash = true;
+        }
+    }
+
+    while (!normalized.empty() && normalized.back() == '-') {
+        normalized.pop_back();
+    }
+
+    return normalized;
+}
+
+std::vector<std::string> localeFallbackChain(const std::string &normalizedLocale) {
+    std::vector<std::string> chain;
+    auto current = normalizedLocale;
+    while (!current.empty()) {
+        chain.push_back(current);
+        const auto separator = current.rfind('-');
+        if (separator == std::string::npos) {
+            break;
+        }
+        current = current.substr(0, separator);
+    }
+    return chain;
+}
+
+struct AcceptLanguageItem {
+    std::string locale;
+    double quality = 1.0;
+    std::size_t order = 0;
+};
+
+std::vector<std::string> parseAcceptLanguageCandidates(const std::string &headerValue) {
+    std::vector<AcceptLanguageItem> parsed;
+    std::size_t order = 0;
+    std::size_t start = 0;
+
+    while (start <= headerValue.size()) {
+        const auto comma = headerValue.find(',', start);
+        const auto chunk = comma == std::string::npos
+                               ? headerValue.substr(start)
+                               : headerValue.substr(start, comma - start);
+        const auto token = trimAsciiWhitespace(chunk);
+        if (!token.empty()) {
+            auto language = token;
+            auto quality = 1.0;
+            const auto semicolon = token.find(';');
+            if (semicolon != std::string::npos) {
+                language = trimAsciiWhitespace(token.substr(0, semicolon));
+                auto params = token.substr(semicolon + 1);
+                std::size_t paramStart = 0;
+                while (paramStart <= params.size()) {
+                    const auto paramEnd = params.find(';', paramStart);
+                    const auto rawParam = paramEnd == std::string::npos
+                                              ? params.substr(paramStart)
+                                              : params.substr(paramStart, paramEnd - paramStart);
+                    const auto param = trimAsciiWhitespace(rawParam);
+                    if (!param.empty()) {
+                        const auto equals = param.find('=');
+                        if (equals != std::string::npos) {
+                            const auto key = toLowerCopy(trimAsciiWhitespace(param.substr(0, equals)));
+                            const auto value = trimAsciiWhitespace(param.substr(equals + 1));
+                            if (key == "q") {
+                                try {
+                                    quality = std::stod(value);
+                                } catch (...) {
+                                    quality = 0.0;
+                                }
+                            }
+                        }
+                    }
+                    if (paramEnd == std::string::npos) {
+                        break;
+                    }
+                    paramStart = paramEnd + 1;
+                }
+            }
+
+            if (!language.empty() && language != "*" && quality > 0.0) {
+                parsed.push_back({language, quality, order++});
+            }
+        }
+
+        if (comma == std::string::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+
+    std::stable_sort(parsed.begin(), parsed.end(), [](const auto &lhs, const auto &rhs) {
+        if (lhs.quality == rhs.quality) {
+            return lhs.order < rhs.order;
+        }
+        return lhs.quality > rhs.quality;
+    });
+
+    std::vector<std::string> orderedLocales;
+    orderedLocales.reserve(parsed.size());
+    for (const auto &item : parsed) {
+        orderedLocales.push_back(item.locale);
+    }
+    return orderedLocales;
+}
+
+void appendNormalizedLocaleArray(const Json::Value &value,
+                                 std::unordered_set<std::string> *setOut,
+                                 std::vector<std::string> *orderedOut) {
+    if (!value.isArray() || setOut == nullptr || orderedOut == nullptr) {
+        return;
+    }
+
+    for (const auto &item : value) {
+        if (!item.isString()) {
+            continue;
+        }
+
+        const auto locale = normalizeLocaleTag(item.asString());
+        if (locale.empty()) {
+            continue;
+        }
+
+        if (setOut->insert(locale).second) {
+            orderedOut->push_back(locale);
+        }
+    }
 }
 
 void appendLowerStringArray(const Json::Value &value,
@@ -311,10 +518,16 @@ Json::Value HydraSsrPlugin::buildRequestContext(const drogon::HttpRequestPtr &re
                                                 const std::string &routeUrl) const {
     Json::Value context(Json::objectValue);
     context["routeUrl"] = routeUrl;
+    context["locale"] = i18nDefaultLocale_;
     if (!req) {
         context["routePath"] = routeUrl;
         context["pathWithQuery"] = routeUrl;
         context["url"] = routeUrl;
+        if (i18nIncludeLocaleCandidates_) {
+            Json::Value candidates(Json::arrayValue);
+            candidates.append(i18nDefaultLocale_);
+            context["localeCandidates"] = std::move(candidates);
+        }
         return context;
     }
 
@@ -348,6 +561,64 @@ Json::Value HydraSsrPlugin::buildRequestContext(const drogon::HttpRequestPtr &re
     context["path"] = routePath;
     context["query"] = query;
     context["method"] = req->methodString();
+
+    std::vector<std::string> rawLocaleCandidates;
+    if (!i18nCookieName_.empty()) {
+        const auto cookieLocale = req->getCookie(i18nCookieName_);
+        if (!cookieLocale.empty()) {
+            rawLocaleCandidates.push_back(cookieLocale);
+        }
+    }
+    if (!i18nQueryParam_.empty()) {
+        const auto queryLocale = req->getParameter(i18nQueryParam_);
+        if (!queryLocale.empty()) {
+            rawLocaleCandidates.push_back(queryLocale);
+        }
+    }
+
+    const auto acceptLanguageCandidates =
+        parseAcceptLanguageCandidates(req->getHeader("accept-language"));
+    rawLocaleCandidates.insert(rawLocaleCandidates.end(),
+                               acceptLanguageCandidates.begin(),
+                               acceptLanguageCandidates.end());
+    rawLocaleCandidates.push_back(i18nDefaultLocale_);
+
+    std::vector<std::string> localeCandidates;
+    for (const auto &candidate : rawLocaleCandidates) {
+        const auto normalized = normalizeLocaleTag(candidate);
+        if (normalized.empty()) {
+            continue;
+        }
+
+        for (const auto &fallbackLocale : localeFallbackChain(normalized)) {
+            appendUniqueString(&localeCandidates, fallbackLocale);
+        }
+    }
+
+    std::string resolvedLocale = i18nDefaultLocale_;
+    if (resolvedLocale.empty()) {
+        resolvedLocale = "en";
+    }
+    for (const auto &candidate : localeCandidates) {
+        if (i18nSupportedLocales_.empty() ||
+            i18nSupportedLocales_.find(candidate) != i18nSupportedLocales_.end()) {
+            resolvedLocale = candidate;
+            break;
+        }
+    }
+    if (!i18nSupportedLocales_.empty() &&
+        i18nSupportedLocales_.find(resolvedLocale) == i18nSupportedLocales_.end() &&
+        !i18nSupportedLocaleOrder_.empty()) {
+        resolvedLocale = i18nSupportedLocaleOrder_.front();
+    }
+    context["locale"] = resolvedLocale;
+    if (i18nIncludeLocaleCandidates_) {
+        Json::Value candidates(Json::arrayValue);
+        for (const auto &candidate : localeCandidates) {
+            candidates.append(candidate);
+        }
+        context["localeCandidates"] = std::move(candidates);
+    }
 
     const auto shouldIncludeHeader = [&](const std::string &headerName) {
         const auto normalized = toLowerCopy(headerName);
@@ -531,6 +802,8 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
     wrapFragment_ = config.get("wrap_fragment", true).asBool();
     apiBridgeEnabled_ = config.get("api_bridge_enabled", true).asBool();
     logRenderMetrics_ = config.get("log_render_metrics", true).asBool();
+    const Json::Value *i18nConfig =
+        config.isMember("i18n") && config["i18n"].isObject() ? &config["i18n"] : nullptr;
     const Json::Value *requestContextConfig =
         config.isMember("request_context") && config["request_context"].isObject()
             ? &config["request_context"]
@@ -580,6 +853,22 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
         }
         return config.get(topLevelKey, fallback).asBool();
     };
+    auto readI18nString = [&](const char *nestedKey,
+                              const char *topLevelKey,
+                              const std::string &fallback) -> std::string {
+        if (i18nConfig && i18nConfig->isMember(nestedKey)) {
+            return (*i18nConfig)[nestedKey].asString();
+        }
+        return config.get(topLevelKey, fallback).asString();
+    };
+    auto readI18nBool = [&](const char *nestedKey,
+                            const char *topLevelKey,
+                            bool fallback) -> bool {
+        if (i18nConfig && i18nConfig->isMember(nestedKey)) {
+            return (*i18nConfig)[nestedKey].asBool();
+        }
+        return config.get(topLevelKey, fallback).asBool();
+    };
     auto appendRequestContextArray = [&](const char *nestedKey,
                                          const char *topLevelKey,
                                          std::unordered_set<std::string> *out) {
@@ -594,8 +883,36 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
             appendLowerStringArray(config[topLevelKey], out);
         }
     };
+    auto appendI18nLocaleArray = [&](const char *nestedKey, const char *topLevelKey) {
+        if (i18nConfig && i18nConfig->isMember(nestedKey)) {
+            appendNormalizedLocaleArray(
+                (*i18nConfig)[nestedKey], &i18nSupportedLocales_, &i18nSupportedLocaleOrder_);
+            return;
+        }
+        if (config.isMember(topLevelKey)) {
+            appendNormalizedLocaleArray(
+                config[topLevelKey], &i18nSupportedLocales_, &i18nSupportedLocaleOrder_);
+        }
+    };
 
-    devModeEnabled_ = readDevBool("enabled", "dev_mode_enabled", false);
+    std::string configuredAssetModeRaw = config.get("asset_mode", "").asString();
+    if (configuredAssetModeRaw.empty() && devModeConfig != nullptr &&
+        devModeConfig->isMember("asset_mode")) {
+        configuredAssetModeRaw = (*devModeConfig)["asset_mode"].asString();
+    }
+    bool assetModeValueValid = true;
+    const auto configuredAssetMode = parseAssetMode(configuredAssetModeRaw, &assetModeValueValid);
+    if (!assetModeValueValid) {
+        LOG_WARN << "HydraStack invalid asset_mode='" << configuredAssetModeRaw
+                 << "', expected one of: auto|dev|prod. Falling back to auto.";
+    }
+
+    const bool legacyDevModeEnabled = readDevBool("enabled", "dev_mode_enabled", false);
+    devModeEnabled_ = configuredAssetMode == AssetMode::kAuto
+                          ? legacyDevModeEnabled
+                          : (configuredAssetMode == AssetMode::kDev);
+    const auto resolvedAssetMode = devModeEnabled_ ? "dev" : "prod";
+
     devProxyAssetsEnabled_ = readDevBool("proxy_assets", "dev_proxy_assets", devModeEnabled_);
     devInjectHmrClient_ =
         readDevBool("inject_hmr_client", "dev_inject_hmr_client", devModeEnabled_);
@@ -615,6 +932,42 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
         readDevString("reload_probe_path", "dev_reload_probe_path", "/__hydra/test");
     devReloadIntervalMs_ =
         readDevUInt64("reload_interval_ms", "dev_reload_interval_ms", 1000);
+    i18nDefaultLocale_ =
+        normalizeLocaleTag(readI18nString("defaultLocale", "i18n_default_locale", "en"));
+    if (i18nDefaultLocale_.empty()) {
+        i18nDefaultLocale_ = "en";
+    }
+    i18nQueryParam_ = trimAsciiWhitespace(
+        readI18nString("queryParam", "i18n_query_param", "lang"));
+    if (i18nQueryParam_.empty()) {
+        i18nQueryParam_ = "lang";
+    }
+    i18nCookieName_ = trimAsciiWhitespace(
+        readI18nString("cookieName", "i18n_cookie_name", "hydra_lang"));
+    if (i18nCookieName_.empty()) {
+        i18nCookieName_ = "hydra_lang";
+    }
+    i18nIncludeLocaleCandidates_ = readI18nBool(
+        "includeLocaleCandidates",
+        "i18n_include_locale_candidates",
+        false);
+    i18nIncludeLocaleCandidates_ = readI18nBool(
+        "include_locale_candidates",
+        "i18n_includeLocaleCandidates",
+        i18nIncludeLocaleCandidates_);
+    i18nSupportedLocales_.clear();
+    i18nSupportedLocaleOrder_.clear();
+    appendI18nLocaleArray("supportedLocales", "i18n_supported_locales");
+    appendI18nLocaleArray("supported_locales", "i18n_supportedLocales");
+    if (i18nSupportedLocales_.empty()) {
+        i18nSupportedLocales_.insert(i18nDefaultLocale_);
+        i18nSupportedLocaleOrder_.push_back(i18nDefaultLocale_);
+    } else if (i18nSupportedLocales_.find(i18nDefaultLocale_) ==
+               i18nSupportedLocales_.end()) {
+        i18nSupportedLocales_.insert(i18nDefaultLocale_);
+        i18nSupportedLocaleOrder_.push_back(i18nDefaultLocale_);
+    }
+
     requestContextIncludeCookies_ = readRequestContextBool(
         "include_cookies", "request_context_include_cookies", false);
     requestContextIncludeCookieMap_ = readRequestContextBool(
@@ -740,8 +1093,11 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
              << ", acquire timeout(ms): " << isolateAcquireTimeoutMs_
              << ", css: " << cssPath_
              << ", client: " << clientJsPath_
+             << ", asset mode: " << resolvedAssetMode
+             << ", configured asset_mode: " << assetModeName(configuredAssetMode)
              << ", dev mode: " << (devModeEnabled_ ? "on" : "off")
              << ", api bridge: " << (apiBridgeEnabled_ ? "on" : "off")
+             << ", locale default: " << i18nDefaultLocale_
              << ", include cookies: " << (requestContextIncludeCookies_ ? "on" : "off")
              << ", include cookieMap: "
              << (requestContextIncludeCookieMap_ ? "on" : "off");

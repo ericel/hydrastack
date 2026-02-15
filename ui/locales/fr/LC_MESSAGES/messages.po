@@ -1,0 +1,44 @@
+# HydraStack UI translations (fr)
+msgid ""
+msgstr ""
+"Language: fr\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "bridge_status"
+msgstr "Etat bridge"
+
+msgid "full_url"
+msgstr "URL complete"
+
+msgid "hello_from_hydrastack"
+msgstr "Bonjour depuis HydraStack"
+
+msgid "hydrated_clicks"
+msgstr "Clics hydrates"
+
+msgid "isolate_counter"
+msgstr "Compteur d'isolate"
+
+msgid "locale"
+msgstr "Langue"
+
+msgid "locale_candidates"
+msgstr "Candidats de langue"
+
+msgid "page_id"
+msgstr "ID de page"
+
+msgid "post_detail_title"
+msgstr "Detail du post"
+
+msgid "post_id"
+msgstr "ID du post"
+
+msgid "query_params"
+msgstr "Parametres de requete"
+
+msgid "route"
+msgstr "Route"
+
+msgid "ssr_burn"
+msgstr "Charge SSR"

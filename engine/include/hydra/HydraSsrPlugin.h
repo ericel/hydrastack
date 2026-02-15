@@ -15,6 +15,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace hydra {
 
@@ -88,6 +89,12 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
     std::string devReloadProbePath_ = "/__hydra/test";
     std::uint64_t devReloadIntervalMs_ = 1000;
     bool apiBridgeEnabled_ = true;
+    std::string i18nDefaultLocale_ = "en";
+    std::string i18nQueryParam_ = "lang";
+    std::string i18nCookieName_ = "hydra_lang";
+    bool i18nIncludeLocaleCandidates_ = false;
+    std::unordered_set<std::string> i18nSupportedLocales_;
+    std::vector<std::string> i18nSupportedLocaleOrder_;
     bool requestContextIncludeCookies_ = false;
     bool requestContextIncludeCookieMap_ = false;
     std::unordered_set<std::string> requestContextAllowedCookies_;

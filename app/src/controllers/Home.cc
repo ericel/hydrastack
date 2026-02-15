@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <algorithm>
 
 namespace demo::controllers {
 namespace {
@@ -44,7 +45,10 @@ class Home final : public drogon::HttpController<Home> {
     METHOD_LIST_BEGIN
     ADD_METHOD_TO(Home::index, "/", drogon::Get);
     ADD_METHOD_TO(Home::postDetail, "/posts/{1}", drogon::Get);
+    ADD_METHOD_TO(Home::redirectHome, "/go-home", drogon::Get);
+    ADD_METHOD_TO(Home::notFoundPage, "/not-found", drogon::Get);
     ADD_METHOD_TO(Home::test, "/__hydra/test", drogon::Get);
+    ADD_METHOD_TO(Home::metrics, "/__hydra/metrics", drogon::Get);
     METHOD_LIST_END
 
     void index(const drogon::HttpRequestPtr &req,
@@ -110,6 +114,46 @@ class Home final : public drogon::HttpController<Home> {
         renderPage(req, std::move(callback), std::move(props));
     }
 
+    void redirectHome(const drogon::HttpRequestPtr &req,
+                      HttpCallback &&callback) const {
+        Json::Value props(Json::objectValue);
+        const std::string path = req->path().empty() ? "/" : req->path();
+        const std::string pathWithQuery = buildPathWithQuery(req);
+
+        props["page"] = "redirect_home";
+        props["path"] = path;
+        props["pathWithQuery"] = pathWithQuery;
+        hydra::HydraRoute::set(
+            props,
+            "redirect_home",
+            Json::Value(Json::objectValue),
+            buildRouteQuery(req),
+            path,
+            pathWithQuery);
+
+        renderPage(req, std::move(callback), std::move(props));
+    }
+
+    void notFoundPage(const drogon::HttpRequestPtr &req,
+                      HttpCallback &&callback) const {
+        Json::Value props(Json::objectValue);
+        const std::string path = req->path().empty() ? "/" : req->path();
+        const std::string pathWithQuery = buildPathWithQuery(req);
+
+        props["page"] = "not_found";
+        props["path"] = path;
+        props["pathWithQuery"] = pathWithQuery;
+        hydra::HydraRoute::set(
+            props,
+            "not_found",
+            Json::Value(Json::objectValue),
+            buildRouteQuery(req),
+            path,
+            pathWithQuery);
+
+        renderPage(req, std::move(callback), std::move(props));
+    }
+
     void test(const drogon::HttpRequestPtr &req,
               HttpCallback &&callback) const {
         Json::Value payload;
@@ -124,17 +168,31 @@ class Home final : public drogon::HttpController<Home> {
         callback(drogon::HttpResponse::newHttpJsonResponse(payload));
     }
 
+    void metrics(const drogon::HttpRequestPtr &,
+                 HttpCallback &&callback) const {
+        auto hydra = drogon::app().getPlugin<hydra::HydraSsrPlugin>();
+        auto response = drogon::HttpResponse::newHttpResponse();
+        response->setStatusCode(drogon::k200OK);
+        response->setContentTypeString("text/plain; version=0.0.4; charset=utf-8");
+        response->setBody(hydra->metricsPrometheus());
+        callback(response);
+    }
+
   private:
     void renderPage(const drogon::HttpRequestPtr &req,
                     HttpCallback &&callback,
                     Json::Value props) const {
         auto hydra = drogon::app().getPlugin<hydra::HydraSsrPlugin>();
-        const auto html = hydra->render(req, props);
+        const auto rendered = hydra->renderResult(req, props);
 
         auto response = drogon::HttpResponse::newHttpResponse();
-        response->setStatusCode(drogon::k200OK);
+        const auto normalizedStatus = std::clamp(rendered.status, 100, 599);
+        response->setStatusCode(static_cast<drogon::HttpStatusCode>(normalizedStatus));
         response->setContentTypeCode(drogon::CT_TEXT_HTML);
-        response->setBody(html);
+        response->setBody(rendered.html);
+        for (const auto &[headerName, headerValue] : rendered.headers) {
+            response->addHeader(headerName, headerValue);
+        }
         callback(response);
     }
 };

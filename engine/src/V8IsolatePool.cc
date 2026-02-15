@@ -100,6 +100,21 @@ std::uint64_t V8IsolatePool::renderTimeoutMs() const {
     return renderTimeoutMs_;
 }
 
+std::size_t V8IsolatePool::size() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return runtimes_.size();
+}
+
+std::size_t V8IsolatePool::availableCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return availableRuntimes_.size();
+}
+
+std::size_t V8IsolatePool::inUseCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return runtimes_.size() - availableRuntimes_.size();
+}
+
 void V8IsolatePool::release(std::size_t runtimeIndex) {
     {
         std::lock_guard<std::mutex> lock(mutex_);

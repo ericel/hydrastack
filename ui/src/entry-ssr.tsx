@@ -148,6 +148,8 @@ globalThis.render = (
   };
   const route = resolveHydraRoute(url || "/", propsWithContext, requestContext);
   let pageProps = attachRouteContract(propsWithContext, route);
+  let status = 200;
+  let redirect: string | null = null;
 
   // Router contract: choose page by pageId from C++ (__hydra_route.pageId).
   switch (route.pageId) {
@@ -165,21 +167,47 @@ globalThis.render = (
       };
       break;
     }
-    case "home":
-    default:
-      const homeMessageKey = ensureString(
-        pageProps.messageKey,
-        ensureString(pageProps.message_key, "hello_from_hydrastack")
-      );
+    case "redirect_home":
+      status = 302;
+      redirect = "/";
       pageProps = {
         ...pageProps,
-        page: "home",
-        messageKey: homeMessageKey
+        page: "redirect_home",
+        message: "Redirecting..."
+      };
+      break;
+    case "home":
+      {
+        const homeMessageKey = ensureString(
+          pageProps.messageKey,
+          ensureString(pageProps.message_key, "hello_from_hydrastack")
+        );
+        pageProps = {
+          ...pageProps,
+          page: "home",
+          messageKey: homeMessageKey
+        };
+      }
+      break;
+    default:
+      status = 404;
+      pageProps = {
+        ...pageProps,
+        page: "not_found",
+        message: "Page not found"
       };
       break;
   }
 
   const hydratedProps = applySsrTestHooks(pageProps);
-  const appHtml = renderToString(<App url={route.routeUrl} initialProps={hydratedProps} />);
-  return appHtml;
+  const appHtml = redirect
+    ? ""
+    : renderToString(<App url={route.routeUrl} initialProps={hydratedProps} />);
+
+  return JSON.stringify({
+    html: appHtml,
+    status,
+    headers: {},
+    redirect
+  });
 };

@@ -13,6 +13,7 @@
 #include <chrono>
 #include <fstream>
 #include <optional>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
@@ -47,51 +48,6 @@ std::string trimAsciiWhitespace(std::string value) {
     return value;
 }
 
-enum class AssetMode {
-    kAuto,
-    kDev,
-    kProd,
-};
-
-AssetMode parseAssetMode(std::string rawMode, bool *isValid = nullptr) {
-    rawMode = toLowerCopy(trimAsciiWhitespace(std::move(rawMode)));
-    if (rawMode.empty() || rawMode == "auto") {
-        if (isValid != nullptr) {
-            *isValid = true;
-        }
-        return AssetMode::kAuto;
-    }
-    if (rawMode == "dev") {
-        if (isValid != nullptr) {
-            *isValid = true;
-        }
-        return AssetMode::kDev;
-    }
-    if (rawMode == "prod") {
-        if (isValid != nullptr) {
-            *isValid = true;
-        }
-        return AssetMode::kProd;
-    }
-
-    if (isValid != nullptr) {
-        *isValid = false;
-    }
-    return AssetMode::kAuto;
-}
-
-const char *assetModeName(AssetMode mode) {
-    switch (mode) {
-        case AssetMode::kDev:
-            return "dev";
-        case AssetMode::kProd:
-            return "prod";
-        case AssetMode::kAuto:
-        default:
-            return "auto";
-    }
-}
-
 const char *onOff(bool value) {
     return value ? "on" : "off";
 }
@@ -107,6 +63,42 @@ std::string firstHeaderToken(const std::string &value) {
     }
 
     return trimAsciiWhitespace(value.substr(0, commaPos));
+}
+
+std::string sanitizeRequestId(std::string value) {
+    value = trimAsciiWhitespace(std::move(value));
+    if (value.empty()) {
+        return {};
+    }
+
+    std::string sanitized;
+    sanitized.reserve(value.size());
+    for (const auto ch : value) {
+        const auto uch = static_cast<unsigned char>(ch);
+        if (std::isalnum(uch) || ch == '-' || ch == '_' || ch == '.') {
+            sanitized.push_back(ch);
+        }
+    }
+
+    constexpr std::size_t kMaxRequestIdLen = 64;
+    if (sanitized.size() > kMaxRequestIdLen) {
+        sanitized.resize(kMaxRequestIdLen);
+    }
+    return sanitized;
+}
+
+std::string generateScriptNonce() {
+    static constexpr char kNonceChars[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    thread_local std::mt19937 generator(std::random_device{}());
+    std::uniform_int_distribution<std::size_t> distribution(0, sizeof(kNonceChars) - 2);
+
+    std::string nonce;
+    nonce.reserve(24);
+    for (std::size_t i = 0; i < 24; ++i) {
+        nonce.push_back(kNonceChars[distribution(generator)]);
+    }
+    return nonce;
 }
 
 void appendUniqueString(std::vector<std::string> *values, const std::string &value) {
@@ -332,6 +324,27 @@ void appendLowerStringArray(const Json::Value &value,
     }
 }
 
+void appendUpperStringArray(const Json::Value &value,
+                            std::unordered_set<std::string> *out) {
+    if (out == nullptr || !value.isArray()) {
+        return;
+    }
+
+    for (const auto &item : value) {
+        if (!item.isString()) {
+            continue;
+        }
+
+        auto key = trimAsciiWhitespace(item.asString());
+        std::transform(key.begin(), key.end(), key.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::toupper(ch));
+        });
+        if (!key.empty()) {
+            out->insert(std::move(key));
+        }
+    }
+}
+
 bool parseJsonObject(const std::string &json, Json::Value *out) {
     if (out == nullptr) {
         return false;
@@ -539,6 +552,65 @@ std::optional<HtmlShellAssets> resolveAssetsFromManifest(
     return assets;
 }
 
+std::optional<SsrRenderResult> tryParseSsrEnvelope(const std::string &renderOutput) {
+    const auto firstNonWs = std::find_if_not(
+        renderOutput.begin(), renderOutput.end(), [](unsigned char ch) {
+            return std::isspace(ch) != 0;
+        });
+    if (firstNonWs == renderOutput.end() || *firstNonWs != '{') {
+        return std::nullopt;
+    }
+
+    Json::Value payload;
+    Json::CharReaderBuilder builder;
+    JSONCPP_STRING errors;
+    std::istringstream stream(renderOutput);
+    if (!Json::parseFromStream(builder, stream, &payload, &errors) || !payload.isObject()) {
+        return std::nullopt;
+    }
+    if (!payload.isMember("html")) {
+        return std::nullopt;
+    }
+
+    SsrRenderResult result;
+    if (payload["html"].isString()) {
+        result.html = payload["html"].asString();
+    } else {
+        result.html.clear();
+    }
+
+    const auto status = payload.get("status", 200).asInt();
+    result.status = status >= 100 && status <= 599 ? status : 200;
+
+    if (payload.isMember("headers") && payload["headers"].isObject()) {
+        for (const auto &headerName : payload["headers"].getMemberNames()) {
+            const auto &headerValue = payload["headers"][headerName];
+            if (headerValue.isString()) {
+                result.headers[headerName] = headerValue.asString();
+            } else if (headerValue.isBool()) {
+                result.headers[headerName] = headerValue.asBool() ? "true" : "false";
+            } else if (headerValue.isNumeric()) {
+                result.headers[headerName] = headerValue.asString();
+            }
+        }
+    }
+
+    if (payload.isMember("redirect") && payload["redirect"].isString()) {
+        const auto redirectTarget = trimAsciiWhitespace(payload["redirect"].asString());
+        if (!redirectTarget.empty()) {
+            result.headers["Location"] = redirectTarget;
+            if (result.status < 300 || result.status > 399) {
+                result.status = 302;
+            }
+        }
+    } else if (result.headers.find("Location") != result.headers.end() &&
+               (result.status < 300 || result.status > 399)) {
+        result.status = 302;
+    }
+
+    return result;
+}
+
 }  // namespace
 
 HydraSsrPlugin::~HydraSsrPlugin() = default;
@@ -562,9 +634,11 @@ std::string HydraSsrPlugin::buildRouteUrl(const drogon::HttpRequestPtr &req,
 }
 
 Json::Value HydraSsrPlugin::buildRequestContext(const drogon::HttpRequestPtr &req,
-                                                const std::string &routeUrl) const {
+                                                const std::string &routeUrl,
+                                                const std::string &requestId) const {
     Json::Value context(Json::objectValue);
     context["routeUrl"] = routeUrl;
+    context["requestId"] = requestId;
     context["locale"] = i18nDefaultLocale_;
     context["theme"] = themeDefault_;
     if (!req) {
@@ -795,6 +869,19 @@ Json::Value HydraSsrPlugin::buildRequestContext(const drogon::HttpRequestPtr &re
     return context;
 }
 
+std::string HydraSsrPlugin::resolveRequestId(const drogon::HttpRequestPtr &req) const {
+    if (req) {
+        const auto headerRequestId =
+            sanitizeRequestId(firstHeaderToken(req->getHeader("x-request-id")));
+        if (!headerRequestId.empty()) {
+            return headerRequestId;
+        }
+    }
+
+    const auto generated = requestIdCounter_.fetch_add(1, std::memory_order_relaxed) + 1;
+    return "hydra-" + std::to_string(generated);
+}
+
 V8SsrRuntime::BridgeResponse HydraSsrPlugin::dispatchApiBridge(
     const V8SsrRuntime::BridgeRequest &request) const {
     V8SsrRuntime::BridgeResponse response;
@@ -816,8 +903,45 @@ V8SsrRuntime::BridgeResponse HydraSsrPlugin::dispatchApiBridge(
         return response;
     }
 
+    auto normalizedMethod = trimAsciiWhitespace(request.method);
+    std::transform(normalizedMethod.begin(),
+                   normalizedMethod.end(),
+                   normalizedMethod.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
+    if (normalizedMethod.empty()) {
+        normalizedMethod = "GET";
+    }
+
+    if (apiBridgeAllowedMethods_.find(normalizedMethod) == apiBridgeAllowedMethods_.end()) {
+        response.status = 405;
+        response.body = "Hydra API bridge method is not allowed: " + normalizedMethod;
+        return response;
+    }
+
+    bool pathAllowed = false;
+    for (const auto &prefix : apiBridgeAllowedPathPrefixes_) {
+        if (prefix.empty()) {
+            continue;
+        }
+        if (request.path.rfind(prefix, 0) == 0) {
+            pathAllowed = true;
+            break;
+        }
+    }
+    if (!pathAllowed) {
+        response.status = 403;
+        response.body = "Hydra API bridge path is not allowed: " + request.path;
+        return response;
+    }
+
+    if (request.body.size() > apiBridgeMaxBodyBytes_) {
+        response.status = 413;
+        response.body = "Hydra API bridge body exceeds max_body_bytes";
+        return response;
+    }
+
     ApiBridgeRequest apiRequest;
-    apiRequest.method = request.method;
+    apiRequest.method = normalizedMethod;
     apiRequest.path = request.path;
     apiRequest.query = request.query;
     apiRequest.body = request.body;
@@ -884,23 +1008,34 @@ void HydraSsrPlugin::registerDevProxyRoutes() {
 }
 
 void HydraSsrPlugin::initAndStart(const Json::Value &config) {
-    ssrBundlePath_ = config.get("ssr_bundle_path", "./public/assets/ssr-bundle.js").asString();
-    cssPath_ = config.get("css_path", "").asString();
-    clientJsPath_ = config.get("client_js_path", "").asString();
-    assetManifestPath_ = config.get("asset_manifest_path", "").asString();
-    if (assetManifestPath_.empty()) {
-        assetManifestPath_ = config.get("manifest_path", "./public/assets/manifest.json").asString();
+    normalizedConfig_ = validateAndNormalizeHydraSsrPluginConfig(config);
+    for (const auto &warning : normalizedConfig_.warnings) {
+        LOG_WARN << "HydraConfig warning: " << warning;
     }
-    assetPublicPrefix_ = config.get("asset_public_prefix", "/assets").asString();
-    clientManifestEntry_ = config.get("client_manifest_entry", "").asString();
-    if (clientManifestEntry_.empty()) {
-        clientManifestEntry_ = config.get("client_entry_key", "src/entry-client.tsx").asString();
-    }
-    isolateAcquireTimeoutMs_ = config.get("acquire_timeout_ms", 0).asUInt64();
-    renderTimeoutMs_ = config.get("render_timeout_ms", 50).asUInt64();
-    wrapFragment_ = config.get("wrap_fragment", true).asBool();
-    apiBridgeEnabled_ = config.get("api_bridge_enabled", true).asBool();
-    logRenderMetrics_ = config.get("log_render_metrics", true).asBool();
+
+    ssrBundlePath_ = normalizedConfig_.ssrBundlePath;
+    cssPath_ = normalizedConfig_.cssPath;
+    clientJsPath_ = normalizedConfig_.clientJsPath;
+    assetManifestPath_ = normalizedConfig_.assetManifestPath;
+    assetPublicPrefix_ = normalizedConfig_.assetPublicPrefix;
+    clientManifestEntry_ = normalizedConfig_.clientManifestEntry;
+    isolateAcquireTimeoutMs_ = normalizedConfig_.acquireTimeoutMs;
+    renderTimeoutMs_ = normalizedConfig_.renderTimeoutMs;
+    wrapFragment_ = normalizedConfig_.wrapFragment;
+    apiBridgeEnabled_ = normalizedConfig_.apiBridgeEnabled;
+    logRenderMetrics_ = normalizedConfig_.logRenderMetrics;
+    logRequestRoutes_ = normalizedConfig_.logRequestRoutes;
+    devModeEnabled_ = normalizedConfig_.devModeEnabled;
+    devProxyAssetsEnabled_ = normalizedConfig_.devProxyAssetsEnabled;
+    devInjectHmrClient_ = normalizedConfig_.devInjectHmrClient;
+    devProxyOrigin_ = normalizedConfig_.devProxyOrigin;
+    devClientEntryPath_ = normalizedConfig_.devClientEntryPath;
+    devHmrClientPath_ = normalizedConfig_.devHmrClientPath;
+    devCssPath_ = normalizedConfig_.devCssPath;
+    devProxyTimeoutSec_ = normalizedConfig_.devProxyTimeoutSec;
+    devAutoReloadEnabled_ = normalizedConfig_.devAutoReloadEnabled;
+    devReloadProbePath_ = normalizedConfig_.devReloadProbePath;
+    devReloadIntervalMs_ = normalizedConfig_.devReloadIntervalMs;
     const Json::Value *i18nConfig =
         config.isMember("i18n") && config["i18n"].isObject() ? &config["i18n"] : nullptr;
     const Json::Value *themeConfig =
@@ -909,43 +1044,9 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
         config.isMember("request_context") && config["request_context"].isObject()
             ? &config["request_context"]
             : nullptr;
-
-    const Json::Value *devModeConfig =
-        config.isMember("dev_mode") && config["dev_mode"].isObject() ? &config["dev_mode"]
-                                                                       : nullptr;
-
-    auto readDevBool = [&](const char *nestedKey,
-                           const char *topLevelKey,
-                           bool fallback) -> bool {
-        if (devModeConfig && devModeConfig->isMember(nestedKey)) {
-            return (*devModeConfig)[nestedKey].asBool();
-        }
-        return config.get(topLevelKey, fallback).asBool();
-    };
-    auto readDevString = [&](const char *nestedKey,
-                             const char *topLevelKey,
-                             const std::string &fallback) -> std::string {
-        if (devModeConfig && devModeConfig->isMember(nestedKey)) {
-            return (*devModeConfig)[nestedKey].asString();
-        }
-        return config.get(topLevelKey, fallback).asString();
-    };
-    auto readDevDouble = [&](const char *nestedKey,
-                             const char *topLevelKey,
-                             double fallback) -> double {
-        if (devModeConfig && devModeConfig->isMember(nestedKey)) {
-            return (*devModeConfig)[nestedKey].asDouble();
-        }
-        return config.get(topLevelKey, fallback).asDouble();
-    };
-    auto readDevUInt64 = [&](const char *nestedKey,
-                             const char *topLevelKey,
-                             std::uint64_t fallback) -> std::uint64_t {
-        if (devModeConfig && devModeConfig->isMember(nestedKey)) {
-            return (*devModeConfig)[nestedKey].asUInt64();
-        }
-        return config.get(topLevelKey, fallback).asUInt64();
-    };
+    const Json::Value *apiBridgeConfig =
+        config.isMember("api_bridge") && config["api_bridge"].isObject() ? &config["api_bridge"]
+                                                                           : nullptr;
     auto readRequestContextBool = [&](const char *nestedKey,
                                       const char *topLevelKey,
                                       bool fallback) -> bool {
@@ -1024,44 +1125,54 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
                 config[topLevelKey], &themeSupportedThemes_, &themeSupportedThemeOrder_);
         }
     };
+    auto appendApiBridgePathPrefixes = [&](const Json::Value &value) {
+        if (!value.isArray()) {
+            return;
+        }
+        for (const auto &item : value) {
+            if (!item.isString()) {
+                continue;
+            }
+            const auto prefix = trimAsciiWhitespace(item.asString());
+            if (!prefix.empty()) {
+                apiBridgeAllowedPathPrefixes_.push_back(prefix);
+            }
+        }
+    };
 
-    std::string configuredAssetModeRaw = config.get("asset_mode", "").asString();
-    if (configuredAssetModeRaw.empty() && devModeConfig != nullptr &&
-        devModeConfig->isMember("asset_mode")) {
-        configuredAssetModeRaw = (*devModeConfig)["asset_mode"].asString();
+    apiBridgeAllowedMethods_.clear();
+    if (apiBridgeConfig != nullptr && apiBridgeConfig->isMember("allowed_methods")) {
+        appendUpperStringArray((*apiBridgeConfig)["allowed_methods"], &apiBridgeAllowedMethods_);
+    } else if (config.isMember("api_bridge_allowed_methods")) {
+        appendUpperStringArray(config["api_bridge_allowed_methods"], &apiBridgeAllowedMethods_);
     }
-    bool assetModeValueValid = true;
-    const auto configuredAssetMode = parseAssetMode(configuredAssetModeRaw, &assetModeValueValid);
-    if (!assetModeValueValid) {
-        LOG_WARN << "HydraStack invalid asset_mode='" << configuredAssetModeRaw
-                 << "', expected one of: auto|dev|prod. Falling back to auto.";
+    if (apiBridgeAllowedMethods_.empty()) {
+        apiBridgeAllowedMethods_ = {"GET", "POST"};
     }
 
-    const bool legacyDevModeEnabled = readDevBool("enabled", "dev_mode_enabled", false);
-    devModeEnabled_ = configuredAssetMode == AssetMode::kAuto
-                          ? legacyDevModeEnabled
-                          : (configuredAssetMode == AssetMode::kDev);
-    const auto resolvedAssetMode = devModeEnabled_ ? "dev" : "prod";
+    apiBridgeAllowedPathPrefixes_.clear();
+    if (apiBridgeConfig != nullptr && apiBridgeConfig->isMember("allowed_path_prefixes")) {
+        appendApiBridgePathPrefixes((*apiBridgeConfig)["allowed_path_prefixes"]);
+    } else if (config.isMember("api_bridge_allowed_path_prefixes")) {
+        appendApiBridgePathPrefixes(config["api_bridge_allowed_path_prefixes"]);
+    }
+    if (apiBridgeAllowedPathPrefixes_.empty()) {
+        apiBridgeAllowedPathPrefixes_.push_back("/hydra/internal/");
+    }
 
-    devProxyAssetsEnabled_ = readDevBool("proxy_assets", "dev_proxy_assets", devModeEnabled_);
-    devInjectHmrClient_ =
-        readDevBool("inject_hmr_client", "dev_inject_hmr_client", devModeEnabled_);
-    devProxyOrigin_ =
-        readDevString("vite_origin", "dev_proxy_origin", "http://127.0.0.1:5174");
-    devClientEntryPath_ =
-        readDevString("client_entry_path", "dev_client_entry_path", "/src/entry-client.tsx");
-    devHmrClientPath_ =
-        readDevString("hmr_client_path", "dev_hmr_client_path", "/@vite/client");
-    devCssPath_ =
-        readDevString("css_path", "dev_css_path", "/src/styles.css");
-    devProxyTimeoutSec_ =
-        readDevDouble("proxy_timeout_sec", "dev_proxy_timeout_sec", 10.0);
-    devAutoReloadEnabled_ =
-        readDevBool("auto_reload", "dev_auto_reload", devModeEnabled_);
-    devReloadProbePath_ =
-        readDevString("reload_probe_path", "dev_reload_probe_path", "/__hydra/test");
-    devReloadIntervalMs_ =
-        readDevUInt64("reload_interval_ms", "dev_reload_interval_ms", 1000);
+    const auto readApiBridgeBodyLimit = [&]() -> std::uint64_t {
+        if (apiBridgeConfig != nullptr && apiBridgeConfig->isMember("max_body_bytes")) {
+            return (*apiBridgeConfig)["max_body_bytes"].asUInt64();
+        }
+        return config.get("api_bridge_max_body_bytes", 64 * 1024).asUInt64();
+    };
+    const auto maxBodyBytes = readApiBridgeBodyLimit();
+    if (maxBodyBytes == 0 || maxBodyBytes > (16ULL * 1024ULL * 1024ULL)) {
+        throw std::runtime_error(
+            "HydraSsrPlugin config 'api_bridge.max_body_bytes' must be in range 1..16777216");
+    }
+    apiBridgeMaxBodyBytes_ = static_cast<std::size_t>(maxBodyBytes);
+
     i18nDefaultLocale_ =
         normalizeLocaleTag(readI18nString("defaultLocale", "i18n_default_locale", "en"));
     if (i18nDefaultLocale_.empty()) {
@@ -1252,21 +1363,16 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
         throw;
     }
 
-    LOG_INFO << "HydraInit done!";
-    LOG_INFO << "runtime bundle=" << ssrBundlePath_;
-    LOG_INFO << "pool=" << isolatePoolSize_;
-    LOG_INFO << "timeout_ms acquire=" << isolateAcquireTimeoutMs_;
-    LOG_INFO << "render=" << renderTimeoutMs_;
-    LOG_INFO << "assets mode=" << resolvedAssetMode;
-    LOG_INFO << "configured=" << assetModeName(configuredAssetMode);
-    LOG_INFO << "css=" << cssPath_;
-    LOG_INFO << "client=" << clientJsPath_;
-    LOG_INFO << "flags dev=" << onOff(devModeEnabled_);
-    LOG_INFO << "api_bridge=" << onOff(apiBridgeEnabled_);
-    LOG_INFO << "include_cookies=" << onOff(requestContextIncludeCookies_);
-    LOG_INFO << "include_cookie_map=" << onOff(requestContextIncludeCookieMap_);
-    LOG_INFO << "defaults locale=" << i18nDefaultLocale_;
-    LOG_INFO << "theme=" << themeDefault_;
+    LOG_INFO << "HydraInit"
+             << " | " << summarizeHydraSsrPluginConfig(normalizedConfig_)
+             << " | runtime{pool=" << isolatePoolSize_ << "}"
+             << " | flags{dev=" << onOff(devModeEnabled_)
+             << ", api_bridge=" << onOff(apiBridgeEnabled_)
+             << ", include_cookies=" << onOff(requestContextIncludeCookies_)
+             << ", include_cookie_map=" << onOff(requestContextIncludeCookieMap_)
+             << ", request_routes=" << onOff(logRequestRoutes_)
+             << "} | defaults{locale=" << i18nDefaultLocale_
+             << ", theme=" << themeDefault_ << "}";
 }
 
 void HydraSsrPlugin::setApiBridgeHandler(ApiBridgeHandler handler) {
@@ -1282,31 +1388,67 @@ void HydraSsrPlugin::shutdown() {
 std::string HydraSsrPlugin::render(const drogon::HttpRequestPtr &req,
                                    const Json::Value &props,
                                    const RenderOptions &options) const {
-    return render(req, toCompactJson(props), options);
+    return renderResult(req, props, options).html;
 }
 
 std::string HydraSsrPlugin::render(const drogon::HttpRequestPtr &req,
                                    const std::string &propsJson,
                                    const RenderOptions &options) const {
+    return renderResult(req, propsJson, options).html;
+}
+
+SsrRenderResult HydraSsrPlugin::renderResult(const drogon::HttpRequestPtr &req,
+                                             const Json::Value &props,
+                                             const RenderOptions &options) const {
+    return renderResult(req, toCompactJson(props), options);
+}
+
+SsrRenderResult HydraSsrPlugin::renderResult(const drogon::HttpRequestPtr &req,
+                                             const std::string &propsJson,
+                                             const RenderOptions &options) const {
     if (!isolatePool_) {
-        return HtmlShell::errorPage("HydraSsrPlugin is not initialized");
+        SsrRenderResult unavailable;
+        unavailable.status = 500;
+        unavailable.html = HtmlShell::errorPage("HydraSsrPlugin is not initialized");
+        unavailable.headers["X-Request-Id"] = resolveRequestId(req);
+        unavailable.headers["X-Content-Type-Options"] = "nosniff";
+        unavailable.headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+        return unavailable;
     }
 
     const auto routeUrl = buildRouteUrl(req, options);
-    const auto requestContext = buildRequestContext(req, routeUrl);
+    const auto requestId = resolveRequestId(req);
+    const auto requestContext = buildRequestContext(req, routeUrl, requestId);
     const auto requestContextJson = toCompactJson(requestContext);
     std::string effectivePropsJson = propsJson;
     Json::Value propsObject;
+    std::string pageId;
     if (parseJsonObject(propsJson, &propsObject)) {
+        const auto route = propsObject["__hydra_route"];
+        if (route.isObject() && route["pageId"].isString()) {
+            pageId = route["pageId"].asString();
+        } else if (propsObject["page"].isString()) {
+            pageId = propsObject["page"].asString();
+        }
         propsObject["__hydra_request"] = requestContext;
         effectivePropsJson = toCompactJson(propsObject);
     }
     const auto acquireStartedAt = std::chrono::steady_clock::now();
+    const auto requestStartedAt = acquireStartedAt;
     std::uint64_t acquireWaitMs = 0;
+    const auto requestMethod = req ? req->methodString() : std::string("GET");
+    const auto scriptNonce = devModeEnabled_ ? std::string{} : generateScriptNonce();
+    const auto requestElapsedMs = [&]() {
+        return static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - requestStartedAt)
+                .count());
+    };
 
     const auto logRenderOk = [&](std::uint64_t renderIndex,
                                  std::uint64_t renderMs,
-                                 std::uint64_t wrapMs) {
+                                 std::uint64_t wrapMs,
+                                 int statusCode) {
         if (!logRenderMetrics_) {
             return;
         }
@@ -1315,6 +1457,8 @@ std::string HydraSsrPlugin::render(const drogon::HttpRequestPtr &req,
                  << " | status=ok"
                  << " | count=" << renderIndex
                  << " | route=" << routeUrl
+                 << " | request_id=" << requestId
+                 << " | http_status=" << statusCode
                  << " | latency_ms{acquire=" << acquireWaitMs
                  << ", render=" << renderMs
                  << ", wrap=" << wrapMs << "}"
@@ -1327,7 +1471,7 @@ std::string HydraSsrPlugin::render(const drogon::HttpRequestPtr &req,
                  << "}";
     };
 
-    const auto logRenderFail = [&](const std::string &errorMessage) {
+    const auto logRenderFail = [&](const std::string &errorMessage, int statusCode) {
         if (!logRenderMetrics_) {
             return;
         }
@@ -1335,6 +1479,8 @@ std::string HydraSsrPlugin::render(const drogon::HttpRequestPtr &req,
         LOG_WARN << "HydraMetrics"
                  << " | status=fail"
                  << " | route=" << routeUrl
+                 << " | request_id=" << requestId
+                 << " | http_status=" << statusCode
                  << " | latency_ms{acquire=" << acquireWaitMs
                  << ", wrap=0}"
                  << " | counters{pool_timeouts="
@@ -1346,6 +1492,59 @@ std::string HydraSsrPlugin::render(const drogon::HttpRequestPtr &req,
                  << "} | error=\"" << errorMessage << "\"";
     };
 
+    const auto logRequestRoute = [&](const char *status,
+                                     std::uint64_t totalMs,
+                                     int statusCode,
+                                     const std::string *errorMessage = nullptr) {
+        if (!logRequestRoutes_) {
+            return;
+        }
+        if (errorMessage != nullptr) {
+            LOG_WARN << "HydraRequest"
+                     << " | status=" << status
+                     << " | method=" << requestMethod
+                     << " | route=" << routeUrl
+                     << " | request_id=" << requestId
+                     << " | http_status=" << statusCode
+                     << " | total_ms=" << totalMs
+                     << " | error=\"" << *errorMessage << "\"";
+            return;
+        }
+
+        LOG_INFO << "HydraRequest"
+                 << " | status=" << status
+                 << " | method=" << requestMethod
+                 << " | route=" << routeUrl
+                 << " | request_id=" << requestId
+                 << " | http_status=" << statusCode
+                 << " | page=" << (pageId.empty() ? "-" : pageId)
+                 << " | total_ms=" << totalMs;
+    };
+    const auto applySecurityHeaders = [&](SsrRenderResult *response, bool wrappedWithShell) {
+        if (response == nullptr) {
+            return;
+        }
+
+        response->headers.try_emplace("X-Content-Type-Options", "nosniff");
+        response->headers.try_emplace("Referrer-Policy", "strict-origin-when-cross-origin");
+        response->headers.try_emplace("X-Frame-Options", "DENY");
+
+        if (devModeEnabled_ ||
+            response->headers.find("Content-Security-Policy") != response->headers.end()) {
+            return;
+        }
+
+        if (wrappedWithShell && !scriptNonce.empty()) {
+            response->headers["Content-Security-Policy"] =
+                "default-src 'self'; script-src 'self' 'nonce-" + scriptNonce +
+                "'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; "
+                "object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+        } else {
+            response->headers["Content-Security-Policy"] =
+                "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+        }
+    };
+
     try {
         auto lease = isolatePool_->acquire(isolateAcquireTimeoutMs_);
         acquireWaitMs = static_cast<std::uint64_t>(
@@ -1355,25 +1554,43 @@ std::string HydraSsrPlugin::render(const drogon::HttpRequestPtr &req,
 
         try {
             const auto renderStartedAt = std::chrono::steady_clock::now();
-            auto html =
+            auto rawRenderOutput =
                 lease->render(
                     routeUrl,
                     effectivePropsJson,
                     requestContextJson,
                     isolatePool_->renderTimeoutMs());
+            observeAcquireWait(acquireWaitMs);
             const auto renderMs = static_cast<std::uint64_t>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now() - renderStartedAt)
                     .count());
+            observeRenderLatency(renderMs);
             const auto renderIndex =
                 renderCount_.fetch_add(1, std::memory_order_relaxed) + 1;
             std::uint64_t wrapMs = 0;
+            SsrRenderResult renderResult;
+            if (const auto parsed = tryParseSsrEnvelope(rawRenderOutput); parsed.has_value()) {
+                renderResult = *parsed;
+            } else {
+                renderResult.html = std::move(rawRenderOutput);
+                renderResult.status = 200;
+            }
 
-            if (wrapFragment_ && !isLikelyFullDocument(html)) {
+            const bool isRedirect =
+                renderResult.status >= 300 &&
+                renderResult.status <= 399 &&
+                renderResult.headers.find("Location") != renderResult.headers.end();
+
+            if (!isRedirect &&
+                wrapFragment_ &&
+                !renderResult.html.empty() &&
+                !isLikelyFullDocument(renderResult.html)) {
                 HtmlShellAssets assets;
                 assets.cssPath = cssPath_;
                 assets.clientJsPath = clientJsPath_;
                 assets.hmrClientPath = hmrClientPath_;
+                assets.scriptNonce = scriptNonce;
                 assets.clientJsModule = clientJsModule_;
                 if (devModeEnabled_ && devAutoReloadEnabled_) {
                     assets.devReloadProbePath = normalizeBrowserPath(devReloadProbePath_);
@@ -1381,20 +1598,51 @@ std::string HydraSsrPlugin::render(const drogon::HttpRequestPtr &req,
                 }
                 const auto wrapStartedAt = std::chrono::steady_clock::now();
                 auto wrappedHtml = HtmlShell::wrap(
-                    html,
+                    renderResult.html,
                     effectivePropsJson,
                     assets);
                 wrapMs = static_cast<std::uint64_t>(
                     std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - wrapStartedAt)
                         .count());
-                logRenderOk(renderIndex, renderMs, wrapMs);
-                return wrappedHtml;
+                const auto totalMs = requestElapsedMs();
+                requestOkCount_.fetch_add(1, std::memory_order_relaxed);
+                totalRequestMs_.fetch_add(totalMs, std::memory_order_relaxed);
+                totalAcquireWaitMs_.fetch_add(acquireWaitMs, std::memory_order_relaxed);
+                totalRenderMs_.fetch_add(renderMs, std::memory_order_relaxed);
+                totalWrapMs_.fetch_add(wrapMs, std::memory_order_relaxed);
+                renderResult.html = std::move(wrappedHtml);
+                renderResult.headers.try_emplace("X-Request-Id", requestId);
+                applySecurityHeaders(&renderResult, true);
+                logRenderOk(renderIndex, renderMs, wrapMs, renderResult.status);
+                logRequestRoute("ok", totalMs, renderResult.status);
+                return renderResult;
             }
 
-            logRenderOk(renderIndex, renderMs, wrapMs);
+            if (!isRedirect &&
+                !wrapFragment_ &&
+                !renderResult.html.empty() &&
+                !isLikelyFullDocument(renderResult.html)) {
+                bool expected = false;
+                if (warnedUnwrappedFragment_.compare_exchange_strong(
+                        expected, true, std::memory_order_relaxed)) {
+                    LOG_WARN << "HydraSsrPlugin wrap_fragment=false while SSR returned HTML fragment. "
+                             << "This can break CSS/JS injection.";
+                }
+            }
 
-            return html;
+            const auto totalMs = requestElapsedMs();
+            requestOkCount_.fetch_add(1, std::memory_order_relaxed);
+            totalRequestMs_.fetch_add(totalMs, std::memory_order_relaxed);
+            totalAcquireWaitMs_.fetch_add(acquireWaitMs, std::memory_order_relaxed);
+            totalRenderMs_.fetch_add(renderMs, std::memory_order_relaxed);
+            totalWrapMs_.fetch_add(wrapMs, std::memory_order_relaxed);
+            renderResult.headers.try_emplace("X-Request-Id", requestId);
+            applySecurityHeaders(&renderResult, false);
+            logRenderOk(renderIndex, renderMs, wrapMs, renderResult.status);
+            logRequestRoute("ok", totalMs, renderResult.status);
+
+            return renderResult;
         } catch (const std::exception &renderEx) {
             lease.markForRecycle();
             runtimeRecycleCount_.fetch_add(1, std::memory_order_relaxed);
@@ -1416,15 +1664,136 @@ std::string HydraSsrPlugin::render(const drogon::HttpRequestPtr &req,
         if (containsText(message, "SSR render exceeded timeout")) {
             renderTimeoutCount_.fetch_add(1, std::memory_order_relaxed);
         }
-        logRenderFail(message);
-        LOG_ERROR << "HydraStack render failed for url=" << routeUrl << ": " << ex.what();
-        return HtmlShell::errorPage(ex.what());
-    } catch (...) {
-        logRenderFail("unknown");
+        const auto totalMs = requestElapsedMs();
+        requestFailCount_.fetch_add(1, std::memory_order_relaxed);
+        renderErrorCount_.fetch_add(1, std::memory_order_relaxed);
+        totalRequestMs_.fetch_add(totalMs, std::memory_order_relaxed);
+        totalAcquireWaitMs_.fetch_add(acquireWaitMs, std::memory_order_relaxed);
+        observeAcquireWait(acquireWaitMs);
+        logRenderFail(message, 500);
+        logRequestRoute("fail", totalMs, 500, &message);
         LOG_ERROR << "HydraStack render failed for url=" << routeUrl
-                  << ": unknown exception";
-        return HtmlShell::errorPage("Unknown SSR runtime error");
+                  << ", request_id=" << requestId << ": " << ex.what();
+        SsrRenderResult failed;
+        failed.status = 500;
+        failed.html = HtmlShell::errorPage(ex.what());
+        failed.headers["X-Request-Id"] = requestId;
+        applySecurityHeaders(&failed, false);
+        return failed;
+    } catch (...) {
+        const auto totalMs = requestElapsedMs();
+        requestFailCount_.fetch_add(1, std::memory_order_relaxed);
+        renderErrorCount_.fetch_add(1, std::memory_order_relaxed);
+        totalRequestMs_.fetch_add(totalMs, std::memory_order_relaxed);
+        totalAcquireWaitMs_.fetch_add(acquireWaitMs, std::memory_order_relaxed);
+        observeAcquireWait(acquireWaitMs);
+        logRenderFail("unknown", 500);
+        const std::string unknownError = "unknown";
+        logRequestRoute("fail", totalMs, 500, &unknownError);
+        LOG_ERROR << "HydraStack render failed for url=" << routeUrl
+                  << ", request_id=" << requestId << ": unknown exception";
+        SsrRenderResult failed;
+        failed.status = 500;
+        failed.html = HtmlShell::errorPage("Unknown SSR runtime error");
+        failed.headers["X-Request-Id"] = requestId;
+        applySecurityHeaders(&failed, false);
+        return failed;
     }
+}
+
+void HydraSsrPlugin::observeAcquireWait(std::uint64_t valueMs) const {
+    static constexpr std::array<std::uint64_t, kLatencyHistogramBucketCount - 1> kUpperBoundsMs = {
+        1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000};
+    std::size_t bucketIndex = 0;
+    while (bucketIndex < kUpperBoundsMs.size() && valueMs > kUpperBoundsMs[bucketIndex]) {
+        ++bucketIndex;
+    }
+    acquireWaitHistogram_[bucketIndex].fetch_add(1, std::memory_order_relaxed);
+}
+
+void HydraSsrPlugin::observeRenderLatency(std::uint64_t valueMs) const {
+    static constexpr std::array<std::uint64_t, kLatencyHistogramBucketCount - 1> kUpperBoundsMs = {
+        1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000};
+    std::size_t bucketIndex = 0;
+    while (bucketIndex < kUpperBoundsMs.size() && valueMs > kUpperBoundsMs[bucketIndex]) {
+        ++bucketIndex;
+    }
+    renderLatencyHistogram_[bucketIndex].fetch_add(1, std::memory_order_relaxed);
+}
+
+HydraMetricsSnapshot HydraSsrPlugin::metricsSnapshot() const {
+    HydraMetricsSnapshot snapshot;
+    snapshot.requestsOk = requestOkCount_.load(std::memory_order_relaxed);
+    snapshot.requestsFail = requestFailCount_.load(std::memory_order_relaxed);
+    snapshot.renderErrors = renderErrorCount_.load(std::memory_order_relaxed);
+    snapshot.poolTimeouts = poolTimeoutCount_.load(std::memory_order_relaxed);
+    snapshot.renderTimeouts = renderTimeoutCount_.load(std::memory_order_relaxed);
+    snapshot.runtimeRecycles = runtimeRecycleCount_.load(std::memory_order_relaxed);
+    snapshot.totalAcquireWaitMs = totalAcquireWaitMs_.load(std::memory_order_relaxed);
+    snapshot.totalRenderMs = totalRenderMs_.load(std::memory_order_relaxed);
+    snapshot.totalWrapMs = totalWrapMs_.load(std::memory_order_relaxed);
+    snapshot.totalRequestMs = totalRequestMs_.load(std::memory_order_relaxed);
+    return snapshot;
+}
+
+std::string HydraSsrPlugin::metricsPrometheus() const {
+    const auto snapshot = metricsSnapshot();
+    const auto totalRequests = snapshot.requestsOk + snapshot.requestsFail;
+    const auto poolInUse = isolatePool_ ? isolatePool_->inUseCount() : 0;
+    const auto poolSize = isolatePool_ ? isolatePool_->size() : 0;
+    static constexpr std::array<std::uint64_t, kLatencyHistogramBucketCount - 1> kUpperBoundsMs = {
+        1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000};
+
+    std::ostringstream out;
+    const auto emitHistogram = [&](const char *name,
+                                   const auto &histogramBuckets,
+                                   std::uint64_t sum,
+                                   std::uint64_t count) {
+        out << "# HELP " << name << " Hydra latency histogram in milliseconds.\n";
+        out << "# TYPE " << name << " histogram\n";
+        std::uint64_t cumulative = 0;
+        for (std::size_t i = 0; i < kUpperBoundsMs.size(); ++i) {
+            cumulative += histogramBuckets[i].load(std::memory_order_relaxed);
+            out << name << "_bucket{le=\"" << kUpperBoundsMs[i] << "\"} "
+                << cumulative << '\n';
+        }
+        cumulative += histogramBuckets[kUpperBoundsMs.size()].load(std::memory_order_relaxed);
+        out << name << "_bucket{le=\"+Inf\"} " << cumulative << '\n';
+        out << name << "_sum " << sum << '\n';
+        out << name << "_count " << count << '\n';
+    };
+
+    emitHistogram(
+        "hydra_acquire_wait_ms", acquireWaitHistogram_, snapshot.totalAcquireWaitMs, totalRequests);
+    emitHistogram(
+        "hydra_render_latency_ms", renderLatencyHistogram_, snapshot.totalRenderMs, snapshot.requestsOk);
+
+    out << "# HELP hydra_pool_in_use Number of V8 runtimes currently leased.\n";
+    out << "# TYPE hydra_pool_in_use gauge\n";
+    out << "hydra_pool_in_use " << poolInUse << '\n';
+
+    out << "# HELP hydra_pool_size Total V8 runtimes in the pool.\n";
+    out << "# TYPE hydra_pool_size gauge\n";
+    out << "hydra_pool_size " << poolSize << '\n';
+
+    out << "# HELP hydra_render_timeouts_total Total SSR render timeout terminations.\n";
+    out << "# TYPE hydra_render_timeouts_total counter\n";
+    out << "hydra_render_timeouts_total " << snapshot.renderTimeouts << '\n';
+
+    out << "# HELP hydra_recycles_total Total runtime recycle events.\n";
+    out << "# TYPE hydra_recycles_total counter\n";
+    out << "hydra_recycles_total " << snapshot.runtimeRecycles << '\n';
+
+    out << "# HELP hydra_render_errors_total Total SSR render failures.\n";
+    out << "# TYPE hydra_render_errors_total counter\n";
+    out << "hydra_render_errors_total " << snapshot.renderErrors << '\n';
+
+    out << "# HELP hydra_requests_total Total SSR requests by status.\n";
+    out << "# TYPE hydra_requests_total counter\n";
+    out << "hydra_requests_total{status=\"ok\"} " << snapshot.requestsOk << '\n';
+    out << "hydra_requests_total{status=\"fail\"} " << snapshot.requestsFail << '\n';
+
+    return out.str();
 }
 
 }  // namespace hydra

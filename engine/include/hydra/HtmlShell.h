@@ -10,6 +10,7 @@ struct HtmlShellAssets {
     std::string cssPath = "/assets/app.css";
     std::string clientJsPath = "/assets/client.js";
     std::string hmrClientPath;
+    std::string scriptNonce;
     bool clientJsModule = false;
     std::string devReloadProbePath;
     std::uint64_t devReloadIntervalMs = 0;

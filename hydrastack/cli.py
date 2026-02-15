@@ -7,6 +7,7 @@ import ast
 import os
 import re
 import shutil
+import signal
 import struct
 import subprocess
 import sys
@@ -298,6 +299,8 @@ def run_command(
         env=dict(env) if env is not None else None,
         check=False,
     )
+    if completed.returncode in (-signal.SIGINT, -signal.SIGTERM):
+        raise KeyboardInterrupt
     if completed.returncode != 0:
         raise ValueError(f"command failed ({completed.returncode}): {display}")
     return completed.returncode
@@ -613,6 +616,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))
+    except KeyboardInterrupt:
+        print("\n[hydra] Interrupted. Shutting down...", file=sys.stderr)
+        return 130
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

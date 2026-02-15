@@ -80,6 +80,7 @@ export default function App({ url, initialProps }: AppProps): JSX.Element {
   const querySummary = Object.entries(routeQuery)
     .map(([key, value]) => `${key}=${value}`)
     .join(", ");
+  const isPostDetailPage = pageId === "post_detail";
   const requestLocale = asString(requestContext.locale, "en").toLowerCase();
   const requestTheme = normalizeTheme(asString(requestContext.theme, "ocean"));
   const [activeTheme, setActiveTheme] = React.useState<ThemeName>(requestTheme);
@@ -133,6 +134,35 @@ export default function App({ url, initialProps }: AppProps): JSX.Element {
         >
           {gettext("toggle_theme")}
         </button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {isPostDetailPage ? (
+            <a
+              className="rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button"
+              href="/"
+            >
+              Back to home
+            </a>
+          ) : (
+            <a
+              className="rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button"
+              href="/posts/123"
+            >
+              Open post 123
+            </a>
+          )}
+          <a
+            className="rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button"
+            href="/go-home"
+          >
+            Test redirect
+          </a>
+          <a
+            className="rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button"
+            href="/not-found"
+          >
+            Test 404
+          </a>
+        </div>
         {localeCandidates.length > 0 ? (
           <p className="mt-1 text-xs hydra-text-muted">
             {gettext("locale_candidates")}: {localeCandidates.join(", ")}

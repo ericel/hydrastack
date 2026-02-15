@@ -338,6 +338,78 @@ React translation usage:
 - Use either `gettext("key")` or `_("key")` style (same function).
 - Demo page uses keys like `hello_from_hydrastack`, `route`, `hydrated_clicks`.
 
+## Milestone 7 Notes (Production Guarantees)
+
+### Config Validation (Fail-Fast)
+
+HydraSsrPlugin now validates and normalizes startup config via:
+
+- `engine/include/hydra/Config.h`
+- `engine/src/Config.cc`
+
+`initAndStart()` consumes `validateAndNormalizeHydraSsrPluginConfig(config)` and logs a
+single resolved summary line.
+
+Validation rules include:
+
+- invalid `asset_mode` -> startup error
+- malformed `dev_mode.vite_origin` -> startup error
+- invalid timeout ranges -> startup error
+- unknown keys under `dev_mode` -> startup error
+- in prod mode, missing/invalid manifest -> startup error
+- API bridge defaults to off in prod unless explicitly enabled
+
+### SSR HTTP Contract (Status + Redirect + Headers)
+
+SSR contract now supports either:
+
+- legacy plain HTML string (still supported)
+- JSON envelope string:
+
+```json
+{
+  "html": "<div>...</div>",
+  "status": 200,
+  "headers": {},
+  "redirect": null
+}
+```
+
+In `ui/src/entry-ssr.tsx`, `globalThis.render` returns the envelope.
+In C++, `HydraSsrPlugin` parses it and `Home.cc` applies status + headers on the Drogon response.
+
+Demo routes for semantics checks:
+
+- `GET /go-home` -> SSR 302 redirect (`Location: /`)
+- `GET /not-found` -> SSR 404 page
+
+### Observability
+
+Request IDs:
+
+- Accepts incoming `X-Request-Id` (sanitized), otherwise generates `hydra-<counter>`.
+- Exposed in `__hydra_request.requestId`.
+- Included in request/metrics/error logs.
+
+Prometheus endpoint:
+
+- `GET /__hydra/metrics`
+
+Metrics include:
+
+- `hydra_render_latency_ms` (histogram)
+- `hydra_acquire_wait_ms` (histogram)
+- `hydra_pool_in_use` (gauge)
+- `hydra_render_timeouts_total`
+- `hydra_recycles_total`
+- `hydra_render_errors_total`
+
+API bridge hardening:
+
+- allowed methods (default `GET,POST`)
+- allowed path prefixes (default `/hydra/internal/`)
+- max request body bytes (default `65536`)
+
 Resolution order:
 
 1. cookie (`cookieName`)
@@ -389,6 +461,9 @@ API bridge contract:
 Use this route to validate the app and hot-restart behavior:
 
 - `GET /__hydra/test`
+- `GET /__hydra/metrics` (Prometheus-style SSR counters/latency sums)
+- `GET /go-home` (SSR redirect contract)
+- `GET /not-found` (SSR 404 contract)
 
 It returns JSON including:
 
@@ -396,3 +471,29 @@ It returns JSON including:
 - `path`
 - `query`
 - `process_started_ms` (changes after app restart)
+
+## Test Gates
+
+Native config fail-fast unit test (Milestone 8.1):
+
+```bash
+ctest --test-dir build --output-on-failure -R hydra_config_validation
+```
+
+End-to-end SSR integration smoke test (routing + i18n + request context + metrics):
+
+```bash
+python3 scripts/test_ssr_integration.py
+```
+
+Micro load regression gate (Milestone 8.3):
+
+```bash
+python3 scripts/test_load_regression.py
+```
+
+Run all CI-facing gates after building:
+
+```bash
+ctest --test-dir build --output-on-failure -R "hydra_config_validation|hydra_ssr_integration|hydra_load_regression"
+```

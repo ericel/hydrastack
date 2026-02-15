@@ -48,6 +48,9 @@ class V8IsolatePool {
 
     [[nodiscard]] Lease acquire(std::uint64_t acquireTimeoutMs = 0);
     [[nodiscard]] std::uint64_t renderTimeoutMs() const;
+    [[nodiscard]] std::size_t size() const;
+    [[nodiscard]] std::size_t availableCount() const;
+    [[nodiscard]] std::size_t inUseCount() const;
 
   private:
     friend class Lease;

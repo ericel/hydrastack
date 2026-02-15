@@ -3,6 +3,7 @@ project(HydraStack VERSION 0.1.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+include(CTest)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -53,6 +54,7 @@ foreach(HYDRA_V8_LIB IN LISTS V8_LIBRARIES)
 endforeach()
 
 add_library(hydra_engine
+  engine/src/Config.cc
   engine/src/HydraSsrPlugin.cc
   engine/src/HtmlShell.cc
   engine/src/V8IsolatePool.cc
@@ -108,6 +110,58 @@ if(HYDRA_BUILD_DEMO)
     include(cmake/HydraUI.cmake)
     hydra_add_ui_build(hydra_ui_build "${CMAKE_CURRENT_SOURCE_DIR}/ui")
     add_dependencies(hydra_demo hydra_ui_build)
+  endif()
+endif()
+
+if(BUILD_TESTING)
+  add_executable(hydra_config_validation_test
+    engine/test/ConfigValidationTest.cc
+  )
+
+  target_link_libraries(hydra_config_validation_test
+    PRIVATE
+      hydra_engine
+  )
+
+  add_test(
+    NAME hydra_config_validation
+    COMMAND hydra_config_validation_test
+  )
+
+  if(HYDRA_BUILD_DEMO)
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+      add_test(
+        NAME hydra_ssr_integration
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_ssr_integration.py
+          --root
+          ${CMAKE_CURRENT_SOURCE_DIR}
+          --binary
+          $<TARGET_FILE:hydra_demo>
+      )
+
+      find_program(HYDRA_AB_EXECUTABLE NAMES ab)
+      if(HYDRA_AB_EXECUTABLE)
+        add_test(
+          NAME hydra_load_regression
+          COMMAND
+            ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_load_regression.py
+            --root
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            --binary
+            $<TARGET_FILE:hydra_demo>
+            --ab
+            ${HYDRA_AB_EXECUTABLE}
+        )
+      else()
+        message(WARNING "apachebench (ab) not found; hydra_load_regression test will be skipped.")
+      endif()
+    else()
+      message(WARNING "Python3 interpreter not found; integration/load tests will be skipped.")
+    endif()
   endif()
 endif()
 

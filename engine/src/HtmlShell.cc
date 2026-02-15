@@ -47,6 +47,13 @@ std::string escapeForJsString(std::string_view value) {
     return escaped;
 }
 
+std::string nonceAttribute(const HtmlShellAssets &assets) {
+    if (assets.scriptNonce.empty()) {
+        return {};
+    }
+    return " nonce=\"" + assets.scriptNonce + "\"";
+}
+
 }  // namespace
 
 std::string HtmlShell::wrap(const std::string &appHtml,
@@ -64,16 +71,18 @@ std::string HtmlShell::wrap(const std::string &appHtml,
         html << "    <link rel=\"stylesheet\" href=\"" << assets.cssPath << "\" />\n";
     }
 
+    const auto nonceAttr = nonceAttribute(assets);
+
     html << "  </head>\n"
          << "  <body>\n"
          << "    <div id=\"root\">" << appHtml << "</div>\n"
-         << "    <script id=\"__HYDRA_PROPS__\" type=\"application/json\">"
+         << "    <script id=\"__HYDRA_PROPS__\" type=\"application/json\"" << nonceAttr << ">"
          << escapeForScriptTag(propsJson) << "</script>\n";
 
     if (!assets.hmrClientPath.empty()) {
         if (const auto reactRefreshPath = deriveReactRefreshPath(assets.hmrClientPath);
             !reactRefreshPath.empty()) {
-            html << "    <script type=\"module\">\n"
+            html << "    <script type=\"module\"" << nonceAttr << ">\n"
                  << "      import RefreshRuntime from \"" << reactRefreshPath << "\";\n"
                  << "      RefreshRuntime.injectIntoGlobalHook(window);\n"
                  << "      window.$RefreshReg$ = () => {};\n"
@@ -82,20 +91,22 @@ std::string HtmlShell::wrap(const std::string &appHtml,
                  << "    </script>\n";
         }
 
-        html << "    <script type=\"module\" src=\"" << assets.hmrClientPath << "\"></script>\n";
+        html << "    <script type=\"module\" src=\"" << assets.hmrClientPath << "\""
+             << nonceAttr << "></script>\n";
     }
 
     if (!assets.clientJsPath.empty()) {
         if (assets.clientJsModule) {
             html << "    <script type=\"module\" src=\"" << assets.clientJsPath
-                 << "\"></script>\n";
+                 << "\"" << nonceAttr << "></script>\n";
         } else {
-            html << "    <script src=\"" << assets.clientJsPath << "\" defer></script>\n";
+            html << "    <script src=\"" << assets.clientJsPath << "\" defer"
+                 << nonceAttr << "></script>\n";
         }
     }
 
     if (!assets.devReloadProbePath.empty() && assets.devReloadIntervalMs > 0) {
-        html << "    <script>\n"
+        html << "    <script" << nonceAttr << ">\n"
              << "      (() => {\n"
              << "        const probePath = \"" << escapeForJsString(assets.devReloadProbePath)
              << "\";\n"

@@ -3548,6 +3548,7 @@ msgstr "Changer le theme"
     const routeQuery = asStringRecord$1(routeContract.query);
     const postId = asString$1(routeParams.postId, asString$1(initialProps.postId, ""));
     const querySummary = Object.entries(routeQuery).map(([key, value]) => `${key}=${value}`).join(", ");
+    const isPostDetailPage = pageId === "post_detail";
     const requestLocale = asString$1(requestContext.locale, "en").toLowerCase();
     const requestTheme = normalizeTheme(asString$1(requestContext.theme, "ocean"));
     const [activeTheme, setActiveTheme] = React.useState(requestTheme);
@@ -3573,35 +3574,35 @@ msgstr "Changer le theme"
         return next;
       });
     }, []);
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { "data-theme": activeTheme, className: "min-h-screen hydra-theme-bg", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "mx-auto max-w-3xl px-6 py-16", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm uppercase tracking-[0.2em] hydra-text-accent", children: "HydraStack" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "mt-4 text-4xl font-semibold", children: message }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-3 hydra-text-muted", children: [
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { "data-theme": activeTheme, className: "h1pkg8nd h1cn6c31", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "h1nbwcgk h12rcolt h14aqli2 h10z0o3a", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "hiyw1ix haok3ij h65dh8x hvasm36", children: "HydraStack" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "h1842365 h1n67ab7 hzd3ouy", children: message }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h1664vbc h1d14slv", children: [
         gettext("route"),
         ": ",
         url
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs hydra-text-muted", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h1d14slv", children: [
         gettext("page_id"),
         ": ",
         pageId
       ] }),
-      postId ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
+      postId ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
         gettext("post_id"),
         ": ",
         postId
       ] }) : null,
-      querySummary ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
+      querySummary ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
         gettext("query_params"),
         ": ",
         querySummary
       ] }) : null,
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs hydra-text-muted", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h1d14slv", children: [
         _("locale"),
         ": ",
         locale
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
         gettext("theme"),
         ": ",
         activeTheme
@@ -3609,34 +3610,67 @@ msgstr "Changer le theme"
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
         {
-          className: "mt-3 rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button",
+          className: "h1664vbc hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
           onClick: toggleTheme,
           type: "button",
           children: gettext("toggle_theme")
         }
       ),
-      localeCandidates.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "h1842365 h1kagvzm h1t5e6r1 h15gc0m4", children: [
+        isPostDetailPage ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "a",
+          {
+            className: "hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
+            href: "/",
+            children: "Back to home"
+          }
+        ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "a",
+          {
+            className: "hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
+            href: "/posts/123",
+            children: "Open post 123"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "a",
+          {
+            className: "hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
+            href: "/go-home",
+            children: "Test redirect"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "a",
+          {
+            className: "hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
+            href: "/not-found",
+            children: "Test 404"
+          }
+        )
+      ] }),
+      localeCandidates.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
         gettext("locale_candidates"),
         ": ",
         localeCandidates.join(", ")
       ] }) : null,
-      requestUrl ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs hydra-text-muted", children: [
+      requestUrl ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h1d14slv", children: [
         gettext("full_url"),
         ": ",
         requestUrl
       ] }) : null,
-      burnMs !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs hydra-text-muted", children: [
+      burnMs !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h1d14slv", children: [
         gettext("ssr_burn"),
         ": ",
         burnMs,
         "ms"
       ] }) : null,
-      isolateCounter !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
+      isolateCounter !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
         gettext("isolate_counter"),
         ": ",
         isolateCounter
       ] }) : null,
-      bridgeStatus !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
+      bridgeStatus !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
         gettext("bridge_status"),
         ": ",
         bridgeStatus,
@@ -3646,7 +3680,7 @@ msgstr "Changer le theme"
       /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "button",
         {
-          className: "mt-8 rounded-lg px-5 py-2 font-medium transition hydra-theme-button",
+          className: "h14s6uuh hdm2rhw h140qzt3 h1baehdp hzphq94 h1a3o3j6 h1r66ctu",
           onClick: () => setCount((value) => value + 1),
           type: "button",
           children: [
@@ -3799,6 +3833,8 @@ msgstr "Changer le theme"
     };
     const route = resolveHydraRoute(url || "/", propsWithContext, requestContext);
     let pageProps = attachRouteContract(propsWithContext, route);
+    let status = 200;
+    let redirect = null;
     switch (route.pageId) {
       case "post_detail": {
         const postId = route.params.postId ?? ensureString(pageProps.postId, "");
@@ -3814,22 +3850,45 @@ msgstr "Changer le theme"
         };
         break;
       }
-      case "home":
-      default:
-        const homeMessageKey = ensureString(
-          pageProps.messageKey,
-          ensureString(pageProps.message_key, "hello_from_hydrastack")
-        );
+      case "redirect_home":
+        status = 302;
+        redirect = "/";
         pageProps = {
           ...pageProps,
-          page: "home",
-          messageKey: homeMessageKey
+          page: "redirect_home",
+          message: "Redirecting..."
+        };
+        break;
+      case "home":
+        {
+          const homeMessageKey = ensureString(
+            pageProps.messageKey,
+            ensureString(pageProps.message_key, "hello_from_hydrastack")
+          );
+          pageProps = {
+            ...pageProps,
+            page: "home",
+            messageKey: homeMessageKey
+          };
+        }
+        break;
+      default:
+        status = 404;
+        pageProps = {
+          ...pageProps,
+          page: "not_found",
+          message: "Page not found"
         };
         break;
     }
     const hydratedProps = applySsrTestHooks(pageProps);
-    const appHtml = renderToString(/* @__PURE__ */ jsxRuntimeExports.jsx(App, { url: route.routeUrl, initialProps: hydratedProps }));
-    return appHtml;
+    const appHtml = redirect ? "" : renderToString(/* @__PURE__ */ jsxRuntimeExports.jsx(App, { url: route.routeUrl, initialProps: hydratedProps }));
+    return JSON.stringify({
+      html: appHtml,
+      status,
+      headers: {},
+      redirect
+    });
   };
 })();
 //# sourceMappingURL=ssr-bundle.js.map

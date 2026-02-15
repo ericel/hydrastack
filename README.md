@@ -271,6 +271,31 @@ Normalization and fallback:
 - region fallback is applied (`fr-ca` -> `fr`)
 - unsupported locales fall back to `defaultLocale`
 
+### Theme Pathway
+
+HydraStack can resolve a request theme and inject it into SSR context as
+`__hydra_request.theme` (and optionally `__hydra_request.themeCandidates`).
+
+`theme` plugin config keys:
+
+- `defaultTheme`: fallback theme (default `ocean`)
+- `supportedThemes`: ordered list of allowed themes
+- `queryParam`: theme query key (default `theme`)
+- `cookieName`: theme cookie key (default `hydra_theme`)
+- `includeThemeCandidates`: include candidate chain in request context
+
+Resolution order:
+
+1. cookie (`cookieName`)
+2. query parameter (`queryParam`)
+3. `defaultTheme`
+
+UI behavior:
+
+- App root sets `data-theme` from `__hydra_request.theme`.
+- Theme tokens are defined in `ui/src/styles.css`.
+- Built-in demo themes: `ocean`, `sunset`, `forest`.
+
 API bridge contract:
 
 - `globalThis.hydra.fetch({ method, path, query, headers, body })`

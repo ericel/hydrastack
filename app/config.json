@@ -33,6 +33,13 @@
           "cookieName": "hydra_lang",
           "includeLocaleCandidates": false
         },
+        "theme": {
+          "defaultTheme": "ocean",
+          "supportedThemes": ["ocean", "sunset", "forest"],
+          "queryParam": "theme",
+          "cookieName": "hydra_theme",
+          "includeThemeCandidates": false
+        },
         "log_render_metrics": true,
         "wrap_fragment": true,
         "api_bridge_enabled": true,

@@ -152,6 +152,26 @@ std::string normalizeLocaleTag(std::string locale) {
     return normalized;
 }
 
+std::string normalizeThemeTag(std::string theme) {
+    theme = trimAsciiWhitespace(std::move(theme));
+    if (theme.empty()) {
+        return {};
+    }
+
+    theme = toLowerCopy(std::move(theme));
+
+    std::string normalized;
+    normalized.reserve(theme.size());
+    for (const auto ch : theme) {
+        const auto uch = static_cast<unsigned char>(ch);
+        if (std::isalnum(uch) || ch == '-' || ch == '_') {
+            normalized.push_back(ch);
+        }
+    }
+
+    return normalized;
+}
+
 std::vector<std::string> localeFallbackChain(const std::string &normalizedLocale) {
     std::vector<std::string> chain;
     auto current = normalizedLocale;
@@ -263,6 +283,29 @@ void appendNormalizedLocaleArray(const Json::Value &value,
 
         if (setOut->insert(locale).second) {
             orderedOut->push_back(locale);
+        }
+    }
+}
+
+void appendNormalizedThemeArray(const Json::Value &value,
+                                std::unordered_set<std::string> *setOut,
+                                std::vector<std::string> *orderedOut) {
+    if (!value.isArray() || setOut == nullptr || orderedOut == nullptr) {
+        return;
+    }
+
+    for (const auto &item : value) {
+        if (!item.isString()) {
+            continue;
+        }
+
+        const auto theme = normalizeThemeTag(item.asString());
+        if (theme.empty()) {
+            continue;
+        }
+
+        if (setOut->insert(theme).second) {
+            orderedOut->push_back(theme);
         }
     }
 }
@@ -519,6 +562,7 @@ Json::Value HydraSsrPlugin::buildRequestContext(const drogon::HttpRequestPtr &re
     Json::Value context(Json::objectValue);
     context["routeUrl"] = routeUrl;
     context["locale"] = i18nDefaultLocale_;
+    context["theme"] = themeDefault_;
     if (!req) {
         context["routePath"] = routeUrl;
         context["pathWithQuery"] = routeUrl;
@@ -527,6 +571,11 @@ Json::Value HydraSsrPlugin::buildRequestContext(const drogon::HttpRequestPtr &re
             Json::Value candidates(Json::arrayValue);
             candidates.append(i18nDefaultLocale_);
             context["localeCandidates"] = std::move(candidates);
+        }
+        if (themeIncludeThemeCandidates_) {
+            Json::Value candidates(Json::arrayValue);
+            candidates.append(themeDefault_);
+            context["themeCandidates"] = std::move(candidates);
         }
         return context;
     }
@@ -618,6 +667,52 @@ Json::Value HydraSsrPlugin::buildRequestContext(const drogon::HttpRequestPtr &re
             candidates.append(candidate);
         }
         context["localeCandidates"] = std::move(candidates);
+    }
+
+    std::vector<std::string> rawThemeCandidates;
+    if (!themeCookieName_.empty()) {
+        const auto cookieTheme = req->getCookie(themeCookieName_);
+        if (!cookieTheme.empty()) {
+            rawThemeCandidates.push_back(cookieTheme);
+        }
+    }
+    if (!themeQueryParam_.empty()) {
+        const auto queryTheme = req->getParameter(themeQueryParam_);
+        if (!queryTheme.empty()) {
+            rawThemeCandidates.push_back(queryTheme);
+        }
+    }
+    rawThemeCandidates.push_back(themeDefault_);
+
+    std::vector<std::string> themeCandidates;
+    for (const auto &candidate : rawThemeCandidates) {
+        const auto normalized = normalizeThemeTag(candidate);
+        if (normalized.empty()) {
+            continue;
+        }
+        appendUniqueString(&themeCandidates, normalized);
+    }
+
+    std::string resolvedTheme = themeDefault_.empty() ? "ocean" : themeDefault_;
+    for (const auto &candidate : themeCandidates) {
+        if (themeSupportedThemes_.empty() ||
+            themeSupportedThemes_.find(candidate) != themeSupportedThemes_.end()) {
+            resolvedTheme = candidate;
+            break;
+        }
+    }
+    if (!themeSupportedThemes_.empty() &&
+        themeSupportedThemes_.find(resolvedTheme) == themeSupportedThemes_.end() &&
+        !themeSupportedThemeOrder_.empty()) {
+        resolvedTheme = themeSupportedThemeOrder_.front();
+    }
+    context["theme"] = resolvedTheme;
+    if (themeIncludeThemeCandidates_) {
+        Json::Value candidates(Json::arrayValue);
+        for (const auto &candidate : themeCandidates) {
+            candidates.append(candidate);
+        }
+        context["themeCandidates"] = std::move(candidates);
     }
 
     const auto shouldIncludeHeader = [&](const std::string &headerName) {
@@ -804,6 +899,8 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
     logRenderMetrics_ = config.get("log_render_metrics", true).asBool();
     const Json::Value *i18nConfig =
         config.isMember("i18n") && config["i18n"].isObject() ? &config["i18n"] : nullptr;
+    const Json::Value *themeConfig =
+        config.isMember("theme") && config["theme"].isObject() ? &config["theme"] : nullptr;
     const Json::Value *requestContextConfig =
         config.isMember("request_context") && config["request_context"].isObject()
             ? &config["request_context"]
@@ -869,6 +966,22 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
         }
         return config.get(topLevelKey, fallback).asBool();
     };
+    auto readThemeString = [&](const char *nestedKey,
+                               const char *topLevelKey,
+                               const std::string &fallback) -> std::string {
+        if (themeConfig && themeConfig->isMember(nestedKey)) {
+            return (*themeConfig)[nestedKey].asString();
+        }
+        return config.get(topLevelKey, fallback).asString();
+    };
+    auto readThemeBool = [&](const char *nestedKey,
+                             const char *topLevelKey,
+                             bool fallback) -> bool {
+        if (themeConfig && themeConfig->isMember(nestedKey)) {
+            return (*themeConfig)[nestedKey].asBool();
+        }
+        return config.get(topLevelKey, fallback).asBool();
+    };
     auto appendRequestContextArray = [&](const char *nestedKey,
                                          const char *topLevelKey,
                                          std::unordered_set<std::string> *out) {
@@ -892,6 +1005,19 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
         if (config.isMember(topLevelKey)) {
             appendNormalizedLocaleArray(
                 config[topLevelKey], &i18nSupportedLocales_, &i18nSupportedLocaleOrder_);
+        }
+    };
+    auto appendThemeArray = [&](const char *nestedKey, const char *topLevelKey) {
+        if (themeConfig && themeConfig->isMember(nestedKey)) {
+            appendNormalizedThemeArray(
+                (*themeConfig)[nestedKey],
+                &themeSupportedThemes_,
+                &themeSupportedThemeOrder_);
+            return;
+        }
+        if (config.isMember(topLevelKey)) {
+            appendNormalizedThemeArray(
+                config[topLevelKey], &themeSupportedThemes_, &themeSupportedThemeOrder_);
         }
     };
 
@@ -966,6 +1092,40 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
                i18nSupportedLocales_.end()) {
         i18nSupportedLocales_.insert(i18nDefaultLocale_);
         i18nSupportedLocaleOrder_.push_back(i18nDefaultLocale_);
+    }
+
+    themeDefault_ = normalizeThemeTag(readThemeString("defaultTheme", "theme_default", "ocean"));
+    if (themeDefault_.empty()) {
+        themeDefault_ = "ocean";
+    }
+    themeQueryParam_ = trimAsciiWhitespace(
+        readThemeString("queryParam", "theme_query_param", "theme"));
+    if (themeQueryParam_.empty()) {
+        themeQueryParam_ = "theme";
+    }
+    themeCookieName_ = trimAsciiWhitespace(
+        readThemeString("cookieName", "theme_cookie_name", "hydra_theme"));
+    if (themeCookieName_.empty()) {
+        themeCookieName_ = "hydra_theme";
+    }
+    themeIncludeThemeCandidates_ = readThemeBool(
+        "includeThemeCandidates",
+        "theme_include_theme_candidates",
+        false);
+    themeIncludeThemeCandidates_ = readThemeBool(
+        "include_theme_candidates",
+        "theme_includeThemeCandidates",
+        themeIncludeThemeCandidates_);
+    themeSupportedThemes_.clear();
+    themeSupportedThemeOrder_.clear();
+    appendThemeArray("supportedThemes", "theme_supported_themes");
+    appendThemeArray("supported_themes", "theme_supportedThemes");
+    if (themeSupportedThemes_.empty()) {
+        themeSupportedThemes_.insert(themeDefault_);
+        themeSupportedThemeOrder_.push_back(themeDefault_);
+    } else if (themeSupportedThemes_.find(themeDefault_) == themeSupportedThemes_.end()) {
+        themeSupportedThemes_.insert(themeDefault_);
+        themeSupportedThemeOrder_.push_back(themeDefault_);
     }
 
     requestContextIncludeCookies_ = readRequestContextBool(
@@ -1098,6 +1258,7 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
              << ", dev mode: " << (devModeEnabled_ ? "on" : "off")
              << ", api bridge: " << (apiBridgeEnabled_ ? "on" : "off")
              << ", locale default: " << i18nDefaultLocale_
+             << ", theme default: " << themeDefault_
              << ", include cookies: " << (requestContextIncludeCookies_ ? "on" : "off")
              << ", include cookieMap: "
              << (requestContextIncludeCookieMap_ ? "on" : "off");

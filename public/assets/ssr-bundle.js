@@ -3319,7 +3319,7 @@
   l.renderToNodeStream;
   l.renderToStaticNodeStream;
   s.renderToReadableStream;
-  const __vite_glob_0_0 = '# HydraStack UI translations (en)\nmsgid ""\nmsgstr ""\n"Language: en\\n"\n"Content-Type: text/plain; charset=UTF-8\\n"\n\nmsgid "bridge_status"\nmsgstr "Bridge status"\n\nmsgid "full_url"\nmsgstr "Full URL"\n\nmsgid "hello_from_hydrastack"\nmsgstr "Hello from HydraStack app"\n\nmsgid "hydrated_clicks"\nmsgstr "Hydrated clicks"\n\nmsgid "isolate_counter"\nmsgstr "Isolate counter"\n\nmsgid "locale"\nmsgstr "Locale"\n\nmsgid "locale_candidates"\nmsgstr "Locale candidates"\n\nmsgid "page_id"\nmsgstr "Page ID"\n\nmsgid "post_detail_title"\nmsgstr "Post detail"\n\nmsgid "post_id"\nmsgstr "Post ID"\n\nmsgid "query_params"\nmsgstr "Query params"\n\nmsgid "route"\nmsgstr "Route"\n\nmsgid "ssr_burn"\nmsgstr "SSR burn"\n';
+  const __vite_glob_0_0 = '# HydraStack UI translations (en)\nmsgid ""\nmsgstr ""\n"Language: en\\n"\n"Content-Type: text/plain; charset=UTF-8\\n"\n\nmsgid "bridge_status"\nmsgstr "Bridge status"\n\nmsgid "full_url"\nmsgstr "Full URL"\n\nmsgid "hello_from_hydrastack"\nmsgstr "Hello from HydraStack app"\n\nmsgid "hydrated_clicks"\nmsgstr "Hydrated clicks"\n\nmsgid "isolate_counter"\nmsgstr "Isolate counter"\n\nmsgid "locale"\nmsgstr "Locale"\n\nmsgid "locale_candidates"\nmsgstr "Locale candidates"\n\nmsgid "page_id"\nmsgstr "Page ID"\n\nmsgid "post_detail_title"\nmsgstr "Post detail"\n\nmsgid "post_id"\nmsgstr "Post ID"\n\nmsgid "query_params"\nmsgstr "Query params"\n\nmsgid "route"\nmsgstr "Route"\n\nmsgid "ssr_burn"\nmsgstr "SSR burn"\n\nmsgid "theme"\nmsgstr "Theme"\n\nmsgid "toggle_theme"\nmsgstr "Toggle theme"\n';
   const __vite_glob_0_1 = `# HydraStack UI translations (fr)
 msgid ""
 msgstr ""
@@ -3364,8 +3364,14 @@ msgstr "Route"
 
 msgid "ssr_burn"
 msgstr "Charge SSR"
+
+msgid "theme"
+msgstr "Theme"
+
+msgid "toggle_theme"
+msgstr "Changer le theme"
 `;
-  const __vite_glob_0_2 = '# HydraStack UI translations (ko)\nmsgid ""\nmsgstr ""\n"Language: ko\\n"\n"Content-Type: text/plain; charset=UTF-8\\n"\n\nmsgid "bridge_status"\nmsgstr "Bridge status"\n\nmsgid "full_url"\nmsgstr "Full URL"\n\nmsgid "hello_from_hydrastack"\nmsgstr "Annyeong from HydraStack"\n\nmsgid "hydrated_clicks"\nmsgstr "Hydrated clicks"\n\nmsgid "isolate_counter"\nmsgstr "Isolate counter"\n\nmsgid "locale"\nmsgstr "Locale"\n\nmsgid "locale_candidates"\nmsgstr "Locale candidates"\n\nmsgid "page_id"\nmsgstr "Page ID"\n\nmsgid "post_detail_title"\nmsgstr "Post detail"\n\nmsgid "post_id"\nmsgstr "Post ID"\n\nmsgid "query_params"\nmsgstr "Query params"\n\nmsgid "route"\nmsgstr "Route"\n\nmsgid "ssr_burn"\nmsgstr "SSR burn"\n';
+  const __vite_glob_0_2 = '# HydraStack UI translations (ko)\nmsgid ""\nmsgstr ""\n"Language: ko\\n"\n"Content-Type: text/plain; charset=UTF-8\\n"\n\nmsgid "bridge_status"\nmsgstr "Bridge status"\n\nmsgid "full_url"\nmsgstr "Full URL"\n\nmsgid "hello_from_hydrastack"\nmsgstr "Annyeong from HydraStack"\n\nmsgid "hydrated_clicks"\nmsgstr "Hydrated clicks"\n\nmsgid "isolate_counter"\nmsgstr "Isolate counter"\n\nmsgid "locale"\nmsgstr "Locale"\n\nmsgid "locale_candidates"\nmsgstr "Locale candidates"\n\nmsgid "page_id"\nmsgstr "Page ID"\n\nmsgid "post_detail_title"\nmsgstr "Post detail"\n\nmsgid "post_id"\nmsgstr "Post ID"\n\nmsgid "query_params"\nmsgstr "Query params"\n\nmsgid "route"\nmsgstr "Route"\n\nmsgid "ssr_burn"\nmsgstr "SSR burn"\n\nmsgid "theme"\nmsgstr "Theme"\n\nmsgid "toggle_theme"\nmsgstr "Toggle theme"\n';
   const FALLBACK_LOCALE = "en";
   function normalizeLocale(locale) {
     return locale.trim().replaceAll("_", "-").toLowerCase();
@@ -3488,6 +3494,7 @@ msgstr "Charge SSR"
       _: gettext
     };
   }
+  const SUPPORTED_THEMES = ["ocean", "sunset", "forest"];
   function asString$1(value, fallback) {
     return typeof value === "string" ? value : fallback;
   }
@@ -3523,6 +3530,13 @@ msgstr "Charge SSR"
     }
     return out;
   }
+  function normalizeTheme(value) {
+    const normalized = value.toLowerCase();
+    if (SUPPORTED_THEMES.includes(normalized)) {
+      return normalized;
+    }
+    return "ocean";
+  }
   function App({ url, initialProps }) {
     const [count, setCount] = React.useState(0);
     const burnMs = asNumber(initialProps.__hydra_burn_ms);
@@ -3535,6 +3549,8 @@ msgstr "Charge SSR"
     const postId = asString$1(routeParams.postId, asString$1(initialProps.postId, ""));
     const querySummary = Object.entries(routeQuery).map(([key, value]) => `${key}=${value}`).join(", ");
     const requestLocale = asString$1(requestContext.locale, "en").toLowerCase();
+    const requestTheme = normalizeTheme(asString$1(requestContext.theme, "ocean"));
+    const [activeTheme, setActiveTheme] = React.useState(requestTheme);
     const i18n = React.useMemo(() => createGettext(requestLocale), [requestLocale]);
     const gettext = i18n.gettext;
     const _ = i18n._;
@@ -3547,56 +3563,80 @@ msgstr "Charge SSR"
     const requestUrl = asString$1(requestContext.url, "");
     const bridgeStatus = asNumber(initialProps.__hydra_bridge_status);
     const bridgeBody = asString$1(initialProps.__hydra_bridge_body, "");
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "h1pkg8nd hlc8isu h7v5iiw h4nxqn9 h1uzrz90", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "h1nbwcgk h12rcolt h14aqli2 h10z0o3a", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "hiyw1ix haok3ij h65dh8x hs8wux1", children: "HydraStack" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "h1842365 h1n67ab7 hzd3ouy", children: message }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h1664vbc h1lod7sa", children: [
+    const toggleTheme = React.useCallback(() => {
+      setActiveTheme((current) => {
+        const index = SUPPORTED_THEMES.indexOf(current);
+        const next = SUPPORTED_THEMES[(index + 1) % SUPPORTED_THEMES.length];
+        if (typeof document !== "undefined") {
+          document.cookie = `hydra_theme=${next}; path=/; max-age=31536000`;
+        }
+        return next;
+      });
+    }, []);
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { "data-theme": activeTheme, className: "min-h-screen hydra-theme-bg", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "mx-auto max-w-3xl px-6 py-16", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm uppercase tracking-[0.2em] hydra-text-accent", children: "HydraStack" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "mt-4 text-4xl font-semibold", children: message }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-3 hydra-text-muted", children: [
         gettext("route"),
         ": ",
         url
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h5r81rn", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs hydra-text-muted", children: [
         gettext("page_id"),
         ": ",
         pageId
       ] }),
-      postId ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h5r81rn", children: [
+      postId ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
         gettext("post_id"),
         ": ",
         postId
       ] }) : null,
-      querySummary ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h5r81rn", children: [
+      querySummary ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
         gettext("query_params"),
         ": ",
         querySummary
       ] }) : null,
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h5r81rn", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs hydra-text-muted", children: [
         _("locale"),
         ": ",
         locale
       ] }),
-      localeCandidates.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h5r81rn", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
+        gettext("theme"),
+        ": ",
+        activeTheme
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          className: "mt-3 rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button",
+          onClick: toggleTheme,
+          type: "button",
+          children: gettext("toggle_theme")
+        }
+      ),
+      localeCandidates.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
         gettext("locale_candidates"),
         ": ",
         localeCandidates.join(", ")
       ] }) : null,
-      requestUrl ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h5r81rn", children: [
+      requestUrl ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs hydra-text-muted", children: [
         gettext("full_url"),
         ": ",
         requestUrl
       ] }) : null,
-      burnMs !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h5r81rn", children: [
+      burnMs !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs hydra-text-muted", children: [
         gettext("ssr_burn"),
         ": ",
         burnMs,
         "ms"
       ] }) : null,
-      isolateCounter !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h5r81rn", children: [
+      isolateCounter !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
         gettext("isolate_counter"),
         ": ",
         isolateCounter
       ] }) : null,
-      bridgeStatus !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h5r81rn", children: [
+      bridgeStatus !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
         gettext("bridge_status"),
         ": ",
         bridgeStatus,
@@ -3606,7 +3646,7 @@ msgstr "Charge SSR"
       /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "button",
         {
-          className: "h14s6uuh hdm2rhw h8ouvcn h1jt3i66 h140qzt3 h1baehdp hzphq94 hs8wux1 h1a3o3j6 h1amq43h h1pk61jt",
+          className: "mt-8 rounded-lg px-5 py-2 font-medium transition hydra-theme-button",
           onClick: () => setCount((value) => value + 1),
           type: "button",
           children: [

@@ -42,3 +42,9 @@ msgstr "Route"
 
 msgid "ssr_burn"
 msgstr "SSR burn"
+
+msgid "theme"
+msgstr "Theme"
+
+msgid "toggle_theme"
+msgstr "Toggle theme"

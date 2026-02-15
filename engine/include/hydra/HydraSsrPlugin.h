@@ -95,6 +95,12 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
     bool i18nIncludeLocaleCandidates_ = false;
     std::unordered_set<std::string> i18nSupportedLocales_;
     std::vector<std::string> i18nSupportedLocaleOrder_;
+    std::string themeDefault_ = "ocean";
+    std::string themeQueryParam_ = "theme";
+    std::string themeCookieName_ = "hydra_theme";
+    bool themeIncludeThemeCandidates_ = false;
+    std::unordered_set<std::string> themeSupportedThemes_;
+    std::vector<std::string> themeSupportedThemeOrder_;
     bool requestContextIncludeCookies_ = false;
     bool requestContextIncludeCookieMap_ = false;
     std::unordered_set<std::string> requestContextAllowedCookies_;

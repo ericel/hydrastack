@@ -45,7 +45,7 @@
           "includeCookieMap": true,
           "allowed_cookies": ["hydra_user"]
         },
-        "log_render_metrics": false,
+        "log_render_metrics": true,
         "wrap_fragment": true,
         "api_bridge_enabled": true,
         "dev_mode": {

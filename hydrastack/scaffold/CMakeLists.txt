@@ -1,14 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(HydraStack VERSION 0.1.0 LANGUAGES CXX)
 
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
-
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(HYDRA_BUILD_UI "Build React/Tailwind assets via npm" OFF)
-option(HYDRA_BUILD_DEMO "Build the hydra_demo application" ON)
 
 find_package(drogon CONFIG REQUIRED)
 find_package(jsoncpp CONFIG REQUIRED)
@@ -59,7 +55,6 @@ add_library(hydra_engine
   engine/src/V8Platform.cc
   engine/src/V8SsrRuntime.cc
 )
-add_library(HydraStack::hydra_engine ALIAS hydra_engine)
 
 set(HYDRA_V8_DEFINITIONS "")
 if(V8_COMPILE_DEFINITIONS)
@@ -71,10 +66,8 @@ endif()
 
 target_include_directories(hydra_engine
   PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/engine/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-    $<BUILD_INTERFACE:${V8_INCLUDE_DIR}>
-    $<INSTALL_INTERFACE:${V8_INCLUDE_DIR}>
+    engine/include
+    ${V8_INCLUDE_DIR}
 )
 
 if(HYDRA_V8_DEFINITIONS)
@@ -88,65 +81,23 @@ target_link_libraries(hydra_engine
     ${V8_LIBRARIES}
 )
 
-if(HYDRA_BUILD_DEMO)
-  add_executable(hydra_demo
-    app/src/main.cc
-    app/src/controllers/Home.cc
-  )
+add_executable(hydra_demo
+  app/src/main.cc
+  app/src/controllers/Home.cc
+)
 
-  target_link_libraries(hydra_demo
-    PRIVATE
-      hydra_engine
-  )
+target_link_libraries(hydra_demo
+  PRIVATE
+    hydra_engine
+)
 
-  target_compile_definitions(hydra_demo
-    PRIVATE
-      HYDRA_PUBLIC_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/public\"
-  )
+target_compile_definitions(hydra_demo
+  PRIVATE
+    HYDRA_PUBLIC_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/public\"
+)
 
-  if(HYDRA_BUILD_UI)
-    include(cmake/HydraUI.cmake)
-    hydra_add_ui_build(hydra_ui_build "${CMAKE_CURRENT_SOURCE_DIR}/ui")
-    add_dependencies(hydra_demo hydra_ui_build)
-  endif()
+if(HYDRA_BUILD_UI)
+  include(cmake/HydraUI.cmake)
+  hydra_add_ui_build(hydra_ui_build "${CMAKE_CURRENT_SOURCE_DIR}/ui")
+  add_dependencies(hydra_demo hydra_ui_build)
 endif()
-
-install(
-  TARGETS hydra_engine
-  EXPORT HydraStackTargets
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-  INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-
-install(
-  DIRECTORY engine/include/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-
-install(
-  EXPORT HydraStackTargets
-  FILE HydraStackTargets.cmake
-  NAMESPACE HydraStack::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/HydraStack
-)
-
-configure_package_config_file(
-  cmake/HydraConfig.cmake.in
-  ${CMAKE_CURRENT_BINARY_DIR}/HydraStackConfig.cmake
-  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/HydraStack
-)
-
-write_basic_package_version_file(
-  ${CMAKE_CURRENT_BINARY_DIR}/HydraStackConfigVersion.cmake
-  VERSION ${PROJECT_VERSION}
-  COMPATIBILITY SameMajorVersion
-)
-
-install(
-  FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/HydraStackConfig.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/HydraStackConfigVersion.cmake
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/HydraStack
-)

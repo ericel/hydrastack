@@ -92,10 +92,6 @@ const char *assetModeName(AssetMode mode) {
     }
 }
 
-const char *onOff(bool value) {
-    return value ? "on" : "off";
-}
-
 std::string firstHeaderToken(const std::string &value) {
     if (value.empty()) {
         return {};
@@ -1252,21 +1248,20 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
         throw;
     }
 
-    LOG_INFO << "HydraInit done!";
-    LOG_INFO << "runtime bundle=" << ssrBundlePath_;
-    LOG_INFO << "pool=" << isolatePoolSize_;
-    LOG_INFO << "timeout_ms acquire=" << isolateAcquireTimeoutMs_;
-    LOG_INFO << "render=" << renderTimeoutMs_;
-    LOG_INFO << "assets mode=" << resolvedAssetMode;
-    LOG_INFO << "configured=" << assetModeName(configuredAssetMode);
-    LOG_INFO << "css=" << cssPath_;
-    LOG_INFO << "client=" << clientJsPath_;
-    LOG_INFO << "flags dev=" << onOff(devModeEnabled_);
-    LOG_INFO << "api_bridge=" << onOff(apiBridgeEnabled_);
-    LOG_INFO << "include_cookies=" << onOff(requestContextIncludeCookies_);
-    LOG_INFO << "include_cookie_map=" << onOff(requestContextIncludeCookieMap_);
-    LOG_INFO << "defaults locale=" << i18nDefaultLocale_;
-    LOG_INFO << "theme=" << themeDefault_;
+    LOG_INFO << "HydraSsrPlugin initialized with bundle: " << ssrBundlePath_
+             << ", pool size: " << isolatePoolSize_
+             << ", acquire timeout(ms): " << isolateAcquireTimeoutMs_
+             << ", css: " << cssPath_
+             << ", client: " << clientJsPath_
+             << ", asset mode: " << resolvedAssetMode
+             << ", configured asset_mode: " << assetModeName(configuredAssetMode)
+             << ", dev mode: " << (devModeEnabled_ ? "on" : "off")
+             << ", api bridge: " << (apiBridgeEnabled_ ? "on" : "off")
+             << ", locale default: " << i18nDefaultLocale_
+             << ", theme default: " << themeDefault_
+             << ", include cookies: " << (requestContextIncludeCookies_ ? "on" : "off")
+             << ", include cookieMap: "
+             << (requestContextIncludeCookieMap_ ? "on" : "off");
 }
 
 void HydraSsrPlugin::setApiBridgeHandler(ApiBridgeHandler handler) {
@@ -1303,48 +1298,6 @@ std::string HydraSsrPlugin::render(const drogon::HttpRequestPtr &req,
     }
     const auto acquireStartedAt = std::chrono::steady_clock::now();
     std::uint64_t acquireWaitMs = 0;
-
-    const auto logRenderOk = [&](std::uint64_t renderIndex,
-                                 std::uint64_t renderMs,
-                                 std::uint64_t wrapMs) {
-        if (!logRenderMetrics_) {
-            return;
-        }
-
-        LOG_INFO << "HydraMetrics"
-                 << " | status=ok"
-                 << " | count=" << renderIndex
-                 << " | route=" << routeUrl
-                 << " | latency_ms{acquire=" << acquireWaitMs
-                 << ", render=" << renderMs
-                 << ", wrap=" << wrapMs << "}"
-                 << " | counters{pool_timeouts="
-                 << poolTimeoutCount_.load(std::memory_order_relaxed)
-                 << ", render_timeouts="
-                 << renderTimeoutCount_.load(std::memory_order_relaxed)
-                 << ", runtime_recycles="
-                 << runtimeRecycleCount_.load(std::memory_order_relaxed)
-                 << "}";
-    };
-
-    const auto logRenderFail = [&](const std::string &errorMessage) {
-        if (!logRenderMetrics_) {
-            return;
-        }
-
-        LOG_WARN << "HydraMetrics"
-                 << " | status=fail"
-                 << " | route=" << routeUrl
-                 << " | latency_ms{acquire=" << acquireWaitMs
-                 << ", wrap=0}"
-                 << " | counters{pool_timeouts="
-                 << poolTimeoutCount_.load(std::memory_order_relaxed)
-                 << ", render_timeouts="
-                 << renderTimeoutCount_.load(std::memory_order_relaxed)
-                 << ", runtime_recycles="
-                 << runtimeRecycleCount_.load(std::memory_order_relaxed)
-                 << "} | error=\"" << errorMessage << "\"";
-    };
 
     try {
         auto lease = isolatePool_->acquire(isolateAcquireTimeoutMs_);
@@ -1388,11 +1341,35 @@ std::string HydraSsrPlugin::render(const drogon::HttpRequestPtr &req,
                     std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - wrapStartedAt)
                         .count());
-                logRenderOk(renderIndex, renderMs, wrapMs);
+                if (logRenderMetrics_) {
+                    LOG_INFO << "HydraMetrics render_ok count=" << renderIndex
+                             << " route=" << routeUrl
+                             << " acquire_wait_ms=" << acquireWaitMs
+                             << " render_ms=" << renderMs
+                             << " wrap_ms=" << wrapMs
+                             << " pool_timeouts="
+                             << poolTimeoutCount_.load(std::memory_order_relaxed)
+                             << " render_timeouts="
+                             << renderTimeoutCount_.load(std::memory_order_relaxed)
+                             << " runtime_recycles="
+                             << runtimeRecycleCount_.load(std::memory_order_relaxed);
+                }
                 return wrappedHtml;
             }
 
-            logRenderOk(renderIndex, renderMs, wrapMs);
+            if (logRenderMetrics_) {
+                LOG_INFO << "HydraMetrics render_ok count=" << renderIndex
+                         << " route=" << routeUrl
+                         << " acquire_wait_ms=" << acquireWaitMs
+                         << " render_ms=" << renderMs
+                         << " wrap_ms=" << wrapMs
+                         << " pool_timeouts="
+                         << poolTimeoutCount_.load(std::memory_order_relaxed)
+                         << " render_timeouts="
+                         << renderTimeoutCount_.load(std::memory_order_relaxed)
+                         << " runtime_recycles="
+                         << runtimeRecycleCount_.load(std::memory_order_relaxed);
+            }
 
             return html;
         } catch (const std::exception &renderEx) {
@@ -1416,11 +1393,33 @@ std::string HydraSsrPlugin::render(const drogon::HttpRequestPtr &req,
         if (containsText(message, "SSR render exceeded timeout")) {
             renderTimeoutCount_.fetch_add(1, std::memory_order_relaxed);
         }
-        logRenderFail(message);
+        if (logRenderMetrics_) {
+            LOG_WARN << "HydraMetrics render_fail route=" << routeUrl
+                     << " acquire_wait_ms=" << acquireWaitMs
+                     << " wrap_ms=0"
+                     << " pool_timeouts="
+                     << poolTimeoutCount_.load(std::memory_order_relaxed)
+                     << " render_timeouts="
+                     << renderTimeoutCount_.load(std::memory_order_relaxed)
+                     << " runtime_recycles="
+                     << runtimeRecycleCount_.load(std::memory_order_relaxed)
+                     << " error=\"" << message << "\"";
+        }
         LOG_ERROR << "HydraStack render failed for url=" << routeUrl << ": " << ex.what();
         return HtmlShell::errorPage(ex.what());
     } catch (...) {
-        logRenderFail("unknown");
+        if (logRenderMetrics_) {
+            LOG_WARN << "HydraMetrics render_fail route=" << routeUrl
+                     << " acquire_wait_ms=" << acquireWaitMs
+                     << " wrap_ms=0"
+                     << " pool_timeouts="
+                     << poolTimeoutCount_.load(std::memory_order_relaxed)
+                     << " render_timeouts="
+                     << renderTimeoutCount_.load(std::memory_order_relaxed)
+                     << " runtime_recycles="
+                     << runtimeRecycleCount_.load(std::memory_order_relaxed)
+                     << " error=\"unknown\"";
+        }
         LOG_ERROR << "HydraStack render failed for url=" << routeUrl
                   << ": unknown exception";
         return HtmlShell::errorPage("Unknown SSR runtime error");

@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --hydra-bg-from: #0d1117;
+  --hydra-bg-to: #22272e;
+  --hydra-text: #f1f5f9;
+  --hydra-muted: #94a3b8;
+  --hydra-accent: #36cfc9;
+  --hydra-button-hover-text: #0d1117;
+}
+
+[data-theme="ocean"] {
+  --hydra-bg-from: #0d1117;
+  --hydra-bg-to: #22272e;
+  --hydra-text: #f1f5f9;
+  --hydra-muted: #94a3b8;
+  --hydra-accent: #36cfc9;
+  --hydra-button-hover-text: #0d1117;
+}
+
+[data-theme="sunset"] {
+  --hydra-bg-from: #2a1123;
+  --hydra-bg-to: #5a1b38;
+  --hydra-text: #fff1e7;
+  --hydra-muted: #e8cfc0;
+  --hydra-accent: #f59e0b;
+  --hydra-button-hover-text: #2a1123;
+}
+
+[data-theme="forest"] {
+  --hydra-bg-from: #0f1f17;
+  --hydra-bg-to: #1f3a2e;
+  --hydra-text: #edf7e9;
+  --hydra-muted: #bfd2c1;
+  --hydra-accent: #7dd56f;
+  --hydra-button-hover-text: #0f1f17;
+}
+
+body {
+  margin: 0;
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+}
+
+.hydra-theme-bg {
+  background-image: linear-gradient(to bottom, var(--hydra-bg-from), var(--hydra-bg-to));
+  color: var(--hydra-text);
+}
+
+.hydra-text-accent {
+  color: var(--hydra-accent);
+}
+
+.hydra-text-muted {
+  color: var(--hydra-muted);
+}
+
+.hydra-theme-button {
+  border: 1px solid var(--hydra-accent);
+  color: var(--hydra-accent);
+}
+
+.hydra-theme-button:hover {
+  background-color: var(--hydra-accent);
+  color: var(--hydra-button-hover-text);
+}

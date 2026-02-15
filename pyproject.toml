@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hydrastack"
+version = "0.1.0"
+description = "HydraStack: Drogon + V8 React SSR framework and CLI"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Oj Obasi" }]
+dependencies = []
+
+[project.scripts]
+hydra = "hydrastack.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "."}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hydrastack*"]
+
+[tool.setuptools.package-data]
+hydrastack = ["scaffold/**", "scaffold/**/*"]

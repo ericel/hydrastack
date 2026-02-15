@@ -1,10 +1,6 @@
 /build/
 /build-debug/
 /build-homebrew/
-/build-engine/
-/build-prod/
 /ui/node_modules/
 /public/assets/*.map
 /ui/locales/**/LC_MESSAGES/*.mo
-*.egg-info/
-/.hydra/

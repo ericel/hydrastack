@@ -14,9 +14,9 @@
       "name": "hydra::HydraSsrPlugin",
       "dependencies": [],
       "config": {
-        "asset_mode": "dev",
+        "asset_mode": "prod",
         "css_obfuscation": {
-          "enabled": false,
+          "enabled": true,
           "emit_classmap": true
         },
         "ssr_bundle_path": "./public/assets/ssr-bundle.js",
@@ -31,35 +31,27 @@
           "supportedLocales": ["en", "fr", "ko"],
           "queryParam": "lang",
           "cookieName": "hydra_lang",
-          "includeLocaleCandidates": true
+          "includeLocaleCandidates": false
         },
         "theme": {
           "defaultTheme": "ocean",
           "supportedThemes": ["ocean", "sunset", "forest"],
           "queryParam": "theme",
           "cookieName": "hydra_theme",
-          "includeThemeCandidates": true
+          "includeThemeCandidates": false
         },
-        "request_context": {
-          "include_cookies": true,
-          "includeCookieMap": true,
-          "allowed_cookies": ["hydra_user"]
-        },
-        "log_render_metrics": false,
+        "log_render_metrics": true,
         "wrap_fragment": true,
         "api_bridge_enabled": true,
         "dev_mode": {
-          "enabled": true,
-          "proxy_assets": false,
+          "enabled": false,
+          "proxy_assets": true,
           "inject_hmr_client": true,
           "vite_origin": "http://127.0.0.1:5174",
           "css_path": "/src/styles.css",
           "client_entry_path": "/src/entry-client.tsx",
           "hmr_client_path": "/@vite/client",
-          "proxy_timeout_sec": 10.0,
-          "auto_reload": true,
-          "reload_probe_path": "/__hydra/test",
-          "reload_interval_ms": 1000
+          "proxy_timeout_sec": 10.0
         }
       }
     }

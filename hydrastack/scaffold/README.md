@@ -22,11 +22,6 @@ Conan manages Drogon and JSON:
 - `drogon/1.9.10`
 - `jsoncpp/1.9.5`
 
-Conan recipe intent:
-
-- `conanfile.py` packages the engine boundary (`hydra_engine`) only.
-- Demo/template sources (`app/`, `ui/`) are intentionally excluded from package exports.
-
 ### V8 dependency
 
 For v0.1, V8 is provided externally (system install or prebuilt path). Configure CMake with:
@@ -54,57 +49,15 @@ cmake --build build -j
 
 If you want CMake to trigger UI bundling, configure with `-DHYDRA_BUILD_UI=ON`.
 
-Engine-only boundary build:
-
-```bash
-cmake -S . -B build-engine \
-  -DHYDRA_BUILD_DEMO=OFF \
-  -DV8_INCLUDE_DIR=/path/to/v8/include \
-  -DV8_LIBRARIES="/path/to/v8/libs"
-cmake --build build-engine -j
-```
-
-## Split-Ready Boundary (Milestone 6)
-
-HydraStack is structured as a monorepo that is ready for a future engine/template split.
-
-Package boundary:
-
-- `engine/` and `cmake/` are the stable C++ package surface.
-- `app/`, `ui/`, and most `scripts/` are demo/template workflow.
-
-What this means today:
-
-- CMake supports engine-only builds via `-DHYDRA_BUILD_DEMO=OFF`.
-- Conan packaging exports engine-focused sources only and builds/installs `hydra_engine`.
-- Installed CMake target for consumers is `HydraStack::hydra_engine`.
-
-Versioning recommendation:
-
-- Engine versions move independently from template/scaffold revisions.
-- Template changes should not force engine API churn.
-
-When to split into separate repos:
-
-- when publishing `hydrastack` as a stable Conan dependency for external teams
-- when template/UI release cadence diverges from engine cadence
-- when CI/security requirements demand strict separation of Node and C++ artifacts
-
 ## Hydra CLI
 
-Install editable while developing this repo:
+The `./hydra` command now includes project lifecycle commands in addition to i18n:
 
-```bash
-pip install -e .
-```
-
-Then use the global command:
-
-- `hydra new <app>`: scaffold a new HydraStack app directory
-- `hydra dev`: run Vite + Drogon watcher stack (development mode by default)
-- `hydra build`: build UI bundles + C++ server
-- `hydra run`: run built `hydra_demo` with selected config
-- `hydra makemessages ...`, `hydra compilemessages ...`: i18n maintenance
+- `./hydra new <app>`: scaffold a new HydraStack app directory
+- `./hydra dev`: run Vite + Drogon watcher stack (development mode by default)
+- `./hydra build`: build UI bundles + C++ server
+- `./hydra run`: run built `hydra_demo` with selected config
+- `./hydra makemessages ...`, `./hydra compilemessages ...`: i18n maintenance
 
 Mode flags:
 
@@ -114,17 +67,15 @@ Mode flags:
 Examples:
 
 ```bash
-hydra dev
-hydra dev --prod
+./hydra dev
+./hydra dev --prod
 
-hydra build
-hydra build --prod
+./hydra build
+./hydra build --prod
 
-hydra run
-hydra run --prod
+./hydra run
+./hydra run --prod
 ```
-
-`./hydra ...` still works in this repo as a local launcher.
 
 ## Dev Hot Reload
 
@@ -158,9 +109,6 @@ Notes:
 - You can override expected ports for startup checks:
   - `HYDRA_APP_PORT=8070`
   - `HYDRA_VITE_PORT=5174`
-- Dev output is concise by default (focus on app URL and rebuild flow).
-  - Full Vite terminal output: `HYDRA_DEV_VERBOSE=1 ./scripts/dev.sh`
-  - Default Vite log file: `.hydra/logs/vite-dev.log`
 - `main.cc` also supports `HYDRA_CONFIG` env var or a CLI arg:
   - `HYDRA_CONFIG=app/config.dev.json ./build/hydra_demo`
   - `./build/hydra_demo app/config.dev.json`
@@ -320,10 +268,10 @@ Locale files (Django-style layout):
 
 Hydra CLI (Django-like):
 
-- `hydra makemessages -l fr`
-- `hydra makemessages --all`
-- `hydra compilemessages -l fr`
-- `hydra compilemessages --all`
+- `./hydra makemessages -l fr`
+- `./hydra makemessages --all`
+- `./hydra compilemessages -l fr`
+- `./hydra compilemessages --all`
 
 Notes:
 

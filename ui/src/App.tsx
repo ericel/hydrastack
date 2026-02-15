@@ -75,6 +75,8 @@ export default function App({ url, initialProps }: AppProps): JSX.Element {
       : {};
   const pageId = asString(routeContract.pageId, asString(initialProps.page, "home"));
   const routeParams = asStringRecord(routeContract.params);
+  const errorStatusCode = asNumber(initialProps.errorStatusCode ?? initialProps.error_status_code);
+  const errorReason = asString(initialProps.errorReason, asString(initialProps.error_reason, ""));
   const routeQuery = asStringRecord(routeContract.query);
   const postId = asString(routeParams.postId, asString(initialProps.postId, ""));
   const querySummary = Object.entries(routeQuery)
@@ -93,7 +95,14 @@ export default function App({ url, initialProps }: AppProps): JSX.Element {
     debugLocaleCandidates.length > 0 ? debugLocaleCandidates : i18n.localeCandidates;
   const messageKey = asString(initialProps.messageKey, asString(initialProps.message_key, ""));
   const messageFallback = asString(initialProps.message, "");
-  const message = messageKey ? gettext(messageKey) : messageFallback || _("hello_from_hydrastack");
+  const message =
+    pageId === "error_http"
+      ? (errorReason || (errorStatusCode !== null ? `HTTP ${errorStatusCode}` : "Request failed"))
+      : pageId === "not_found"
+      ? "Page not found"
+      : messageKey
+      ? gettext(messageKey)
+      : messageFallback || _("hello_from_hydrastack");
   const requestUrl = asString(requestContext.url, "");
   const bridgeStatus = asNumber(initialProps.__hydra_bridge_status);
   const bridgeBody = asString(initialProps.__hydra_bridge_body, "");
@@ -117,6 +126,12 @@ export default function App({ url, initialProps }: AppProps): JSX.Element {
           {gettext("route")}: {url}
         </p>
         <p className="mt-2 text-xs hydra-text-muted">{gettext("page_id")}: {pageId}</p>
+        {errorStatusCode !== null ? (
+          <p className="mt-1 text-xs hydra-text-muted">
+            HTTP status: {errorStatusCode}
+            {errorReason ? ` (${errorReason})` : ""}
+          </p>
+        ) : null}
         {postId ? <p className="mt-1 text-xs hydra-text-muted">{gettext("post_id")}: {postId}</p> : null}
         {querySummary ? (
           <p className="mt-1 text-xs hydra-text-muted">{gettext("query_params")}: {querySummary}</p>

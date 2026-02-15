@@ -381,7 +381,13 @@ In C++, `HydraSsrPlugin` parses it and `Home.cc` applies status + headers on the
 Demo routes for semantics checks:
 
 - `GET /go-home` -> SSR 302 redirect (`Location: /`)
-- `GET /not-found` -> SSR 404 page
+- `GET /not-found` -> SSR 404 page from a matched Hydra route
+
+404 behavior is unified for document requests:
+
+- Unmatched route (for example `GET /m`) now goes through Drogon's custom error handler and renders Hydra SSR error UI with HTTP 404.
+- Matched route can also return HTTP 404 via SSR envelope (for example `GET /not-found`).
+- Non-document requests (assets/modules/etc.) still bypass this UI path and use Drogon's fallback error response.
 
 ### Observability
 
@@ -458,12 +464,13 @@ API bridge contract:
 
 ## Test Route
 
-Use this route to validate the app and hot-restart behavior:
+Use these routes to validate the app and hot-restart behavior:
 
 - `GET /__hydra/test`
 - `GET /__hydra/metrics` (Prometheus-style SSR counters/latency sums)
 - `GET /go-home` (SSR redirect contract)
-- `GET /not-found` (SSR 404 contract)
+- `GET /not-found` (SSR 404 contract on matched route)
+- `GET /m` (unmatched route rendered by unified Hydra error UI)
 
 It returns JSON including:
 

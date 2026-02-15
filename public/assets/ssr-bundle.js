@@ -3545,6 +3545,8 @@ msgstr "Changer le theme"
     const routeContract = typeof initialProps.__hydra_route === "object" && initialProps.__hydra_route !== null ? initialProps.__hydra_route : {};
     const pageId = asString$1(routeContract.pageId, asString$1(initialProps.page, "home"));
     const routeParams = asStringRecord$1(routeContract.params);
+    const errorStatusCode = asNumber(initialProps.errorStatusCode ?? initialProps.error_status_code);
+    const errorReason = asString$1(initialProps.errorReason, asString$1(initialProps.error_reason, ""));
     const routeQuery = asStringRecord$1(routeContract.query);
     const postId = asString$1(routeParams.postId, asString$1(initialProps.postId, ""));
     const querySummary = Object.entries(routeQuery).map(([key, value]) => `${key}=${value}`).join(", ");
@@ -3560,7 +3562,7 @@ msgstr "Changer le theme"
     const localeCandidates = debugLocaleCandidates.length > 0 ? debugLocaleCandidates : i18n.localeCandidates;
     const messageKey = asString$1(initialProps.messageKey, asString$1(initialProps.message_key, ""));
     const messageFallback = asString$1(initialProps.message, "");
-    const message = messageKey ? gettext(messageKey) : messageFallback || _("hello_from_hydrastack");
+    const message = pageId === "error_http" ? errorReason || (errorStatusCode !== null ? `HTTP ${errorStatusCode}` : "Request failed") : pageId === "not_found" ? "Page not found" : messageKey ? gettext(messageKey) : messageFallback || _("hello_from_hydrastack");
     const requestUrl = asString$1(requestContext.url, "");
     const bridgeStatus = asNumber(initialProps.__hydra_bridge_status);
     const bridgeBody = asString$1(initialProps.__hydra_bridge_body, "");
@@ -3574,35 +3576,40 @@ msgstr "Changer le theme"
         return next;
       });
     }, []);
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { "data-theme": activeTheme, className: "h1pkg8nd h1cn6c31", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "h1nbwcgk h12rcolt h14aqli2 h10z0o3a", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "hiyw1ix haok3ij h65dh8x hvasm36", children: "HydraStack" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "h1842365 h1n67ab7 hzd3ouy", children: message }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h1664vbc h1d14slv", children: [
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { "data-theme": activeTheme, className: "min-h-screen hydra-theme-bg", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "mx-auto max-w-3xl px-6 py-16", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm uppercase tracking-[0.2em] hydra-text-accent", children: "HydraStack" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "mt-4 text-4xl font-semibold", children: message }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-3 hydra-text-muted", children: [
         gettext("route"),
         ": ",
         url
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h1d14slv", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs hydra-text-muted", children: [
         gettext("page_id"),
         ": ",
         pageId
       ] }),
-      postId ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
+      errorStatusCode !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
+        "HTTP status: ",
+        errorStatusCode,
+        errorReason ? ` (${errorReason})` : ""
+      ] }) : null,
+      postId ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
         gettext("post_id"),
         ": ",
         postId
       ] }) : null,
-      querySummary ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
+      querySummary ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
         gettext("query_params"),
         ": ",
         querySummary
       ] }) : null,
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h1d14slv", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs hydra-text-muted", children: [
         _("locale"),
         ": ",
         locale
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
         gettext("theme"),
         ": ",
         activeTheme
@@ -3610,24 +3617,24 @@ msgstr "Changer le theme"
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
         {
-          className: "h1664vbc hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
+          className: "mt-3 rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button",
           onClick: toggleTheme,
           type: "button",
           children: gettext("toggle_theme")
         }
       ),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "h1842365 h1kagvzm h1t5e6r1 h15gc0m4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex flex-wrap gap-2", children: [
         isPostDetailPage ? /* @__PURE__ */ jsxRuntimeExports.jsx(
           "a",
           {
-            className: "hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
+            className: "rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button",
             href: "/",
             children: "Back to home"
           }
         ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
           "a",
           {
-            className: "hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
+            className: "rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button",
             href: "/posts/123",
             children: "Open post 123"
           }
@@ -3635,7 +3642,7 @@ msgstr "Changer le theme"
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "a",
           {
-            className: "hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
+            className: "rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button",
             href: "/go-home",
             children: "Test redirect"
           }
@@ -3643,34 +3650,34 @@ msgstr "Changer le theme"
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "a",
           {
-            className: "hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
+            className: "rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button",
             href: "/not-found",
             children: "Test 404"
           }
         )
       ] }),
-      localeCandidates.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
+      localeCandidates.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
         gettext("locale_candidates"),
         ": ",
         localeCandidates.join(", ")
       ] }) : null,
-      requestUrl ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h1d14slv", children: [
+      requestUrl ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs hydra-text-muted", children: [
         gettext("full_url"),
         ": ",
         requestUrl
       ] }) : null,
-      burnMs !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h1d14slv", children: [
+      burnMs !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-xs hydra-text-muted", children: [
         gettext("ssr_burn"),
         ": ",
         burnMs,
         "ms"
       ] }) : null,
-      isolateCounter !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
+      isolateCounter !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
         gettext("isolate_counter"),
         ": ",
         isolateCounter
       ] }) : null,
-      bridgeStatus !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
+      bridgeStatus !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs hydra-text-muted", children: [
         gettext("bridge_status"),
         ": ",
         bridgeStatus,
@@ -3680,7 +3687,7 @@ msgstr "Changer le theme"
       /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "button",
         {
-          className: "h14s6uuh hdm2rhw h140qzt3 h1baehdp hzphq94 h1a3o3j6 h1r66ctu",
+          className: "mt-8 rounded-lg px-5 py-2 font-medium transition hydra-theme-button",
           onClick: () => setCount((value) => value + 1),
           type: "button",
           children: [
@@ -3872,6 +3879,20 @@ msgstr "Changer le theme"
           };
         }
         break;
+      case "error_http": {
+        const rawStatus = asFiniteNumber(pageProps.errorStatusCode ?? pageProps.error_status_code);
+        const resolvedStatus = rawStatus !== null && rawStatus >= 400 && rawStatus <= 599 ? Math.floor(rawStatus) : 500;
+        const reason = ensureString(pageProps.errorReason, ensureString(pageProps.error_reason, ""));
+        status = resolvedStatus;
+        pageProps = {
+          ...pageProps,
+          page: "error_http",
+          errorStatusCode: resolvedStatus,
+          errorReason: reason,
+          message: reason || `HTTP ${resolvedStatus}`
+        };
+        break;
+      }
       default:
         status = 404;
         pageProps = {

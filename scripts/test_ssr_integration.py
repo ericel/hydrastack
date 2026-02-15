@@ -188,6 +188,15 @@ def run_tests(base_url: str) -> None:
     assert_equal(status, 404, "GET /not-found status")
     assert_contains(html, "Page not found", "not-found html")
 
+    # Unmatched document routes should use global Hydra error UI with matching HTTP status.
+    status, html, _ = fetch_text(f"{base_url}/m")
+    assert_equal(status, 404, "GET /m status")
+    props = parse_props(html)
+    route = props.get("__hydra_route", {})
+    assert_equal(route.get("pageId"), "error_http", "unmatched route pageId")
+    assert_equal(props.get("errorStatusCode"), 404, "unmatched route status payload")
+    assert_contains(html, "Not Found", "unmatched route headline")
+
     status, metrics, _ = fetch_text(f"{base_url}/__hydra/metrics")
     assert_equal(status, 200, "GET /__hydra/metrics status")
     assert_contains(metrics, "hydra_render_latency_ms_bucket", "render histogram")

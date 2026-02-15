@@ -189,6 +189,23 @@ globalThis.render = (
         };
       }
       break;
+    case "error_http": {
+      const rawStatus = asFiniteNumber(pageProps.errorStatusCode ?? pageProps.error_status_code);
+      const resolvedStatus =
+        rawStatus !== null && rawStatus >= 400 && rawStatus <= 599
+          ? Math.floor(rawStatus)
+          : 500;
+      const reason = ensureString(pageProps.errorReason, ensureString(pageProps.error_reason, ""));
+      status = resolvedStatus;
+      pageProps = {
+        ...pageProps,
+        page: "error_http",
+        errorStatusCode: resolvedStatus,
+        errorReason: reason,
+        message: reason || `HTTP ${resolvedStatus}`
+      };
+      break;
+    }
     default:
       status = 404;
       pageProps = {

@@ -37,12 +37,13 @@ port = "8070"
 https = "0"
 vite_origin = ""
 vite_port = ""
+asset_mode = "dev"
 
 try:
     with open(path, "r", encoding="utf-8") as fh:
         cfg = json.load(fh)
 except Exception:
-    print(f"{address}|{port}|{https}|{vite_origin}|{vite_port}")
+    print(f"{address}|{port}|{https}|{vite_origin}|{vite_port}|{asset_mode}")
     raise SystemExit(0)
 
 listeners = cfg.get("listeners")
@@ -64,14 +65,32 @@ if isinstance(plugins, list):
             continue
         if plugin.get("name") != "hydra::HydraSsrPlugin":
             continue
+
         plugin_cfg = plugin.get("config")
         if not isinstance(plugin_cfg, dict):
             break
+
         dev_mode = plugin_cfg.get("dev_mode")
+        legacy_dev_enabled = False
         if isinstance(dev_mode, dict):
+            legacy_dev_enabled = bool(dev_mode.get("enabled"))
             raw_vite_origin = dev_mode.get("vite_origin")
             if isinstance(raw_vite_origin, str):
                 vite_origin = raw_vite_origin.strip()
+
+        raw_asset_mode = ""
+        top_level_asset_mode = plugin_cfg.get("asset_mode")
+        if isinstance(top_level_asset_mode, str):
+            raw_asset_mode = top_level_asset_mode.strip().lower()
+        elif isinstance(dev_mode, dict):
+            nested_asset_mode = dev_mode.get("asset_mode")
+            if isinstance(nested_asset_mode, str):
+                raw_asset_mode = nested_asset_mode.strip().lower()
+
+        if raw_asset_mode in ("dev", "prod"):
+            asset_mode = raw_asset_mode
+        else:
+            asset_mode = "dev" if legacy_dev_enabled else "prod"
         break
 
 if vite_origin:
@@ -79,12 +98,12 @@ if vite_origin:
     if parsed.port:
         vite_port = str(parsed.port)
 
-print(f"{address}|{port}|{https}|{vite_origin}|{vite_port}")
+print(f"{address}|{port}|{https}|{vite_origin}|{vite_port}|{asset_mode}")
 PY
 }
 
 CONFIG_VALUES="$(read_config_values)"
-IFS='|' read -r CONFIG_APP_ADDRESS CONFIG_APP_PORT CONFIG_APP_HTTPS CONFIG_VITE_ORIGIN CONFIG_VITE_PORT <<<"$CONFIG_VALUES"
+IFS='|' read -r CONFIG_APP_ADDRESS CONFIG_APP_PORT CONFIG_APP_HTTPS CONFIG_VITE_ORIGIN CONFIG_VITE_PORT CONFIG_ASSET_MODE <<<"$CONFIG_VALUES"
 
 APP_BIND_ADDRESS="${HYDRA_APP_HOST:-${CONFIG_APP_ADDRESS:-0.0.0.0}}"
 APP_PORT="${HYDRA_APP_PORT:-${CONFIG_APP_PORT:-8070}}"
@@ -93,6 +112,15 @@ VITE_ORIGIN="${HYDRA_VITE_ORIGIN:-${CONFIG_VITE_ORIGIN:-http://127.0.0.1:${VITE_
 VITE_ORIGIN="${VITE_ORIGIN%/}"
 if [[ -z "$VITE_ORIGIN" ]]; then
   VITE_ORIGIN="http://127.0.0.1:${VITE_PORT}"
+fi
+
+ASSET_MODE="${HYDRA_ASSET_MODE_OVERRIDE:-${CONFIG_ASSET_MODE:-dev}}"
+if [[ "$ASSET_MODE" != "dev" && "$ASSET_MODE" != "prod" ]]; then
+  ASSET_MODE="dev"
+fi
+USE_VITE_SERVER="1"
+if [[ "$ASSET_MODE" == "prod" ]]; then
+  USE_VITE_SERVER="0"
 fi
 
 APP_SCHEME="http"
@@ -125,14 +153,21 @@ print_service_banner() {
   echo "| Hydra dev stack                                                     |"
   echo "+---------------------------------------------------------------------+"
   printf "| %-14s | %s\n" "Drogon app" "$APP_URL"
-  printf "| %-14s | %s\n" "Vite (HMR)" "${VITE_ORIGIN}/"
+  printf "| %-14s | %s\n" "Asset mode" "$ASSET_MODE"
+  if [[ "$USE_VITE_SERVER" == "1" ]]; then
+    printf "| %-14s | %s\n" "Vite (HMR)" "${VITE_ORIGIN}/"
+  else
+    printf "| %-14s | %s\n" "Vite (HMR)" "disabled (asset_mode=prod)"
+  fi
   printf "| %-14s | %s\n" "Config" "$CONFIG_PATH"
   echo "+---------------------------------------------------------------------+"
   echo
 }
 
 ensure_port_free "$APP_PORT"
-ensure_port_free "$VITE_PORT"
+if [[ "$USE_VITE_SERVER" == "1" ]]; then
+  ensure_port_free "$VITE_PORT"
+fi
 
 cleanup() {
   local exit_code=$?
@@ -141,6 +176,9 @@ cleanup() {
   fi
   if [[ -n "${ssr_watch_pid:-}" ]]; then
     kill "$ssr_watch_pid" 2>/dev/null || true
+  fi
+  if [[ -n "${client_watch_pid:-}" ]]; then
+    kill "$client_watch_pid" 2>/dev/null || true
   fi
   if [[ -n "${vite_pid:-}" ]]; then
     kill "$vite_pid" 2>/dev/null || true
@@ -152,30 +190,51 @@ trap cleanup EXIT INT TERM
 print_service_banner
 
 echo "[HydraDev] Open your app at: $APP_URL"
-echo "[HydraDev] Starting Vite dev server..."
-if [[ "$DEV_VERBOSE" == "1" ]]; then
-  (
-    cd "$UI_DIR"
-    HYDRA_UI_CONFIG_PATH="$CONFIG_PATH" npm run dev -- --host 127.0.0.1 --port "$VITE_PORT" --strictPort
-  ) &
-else
-  mkdir -p "$DEV_LOG_DIR"
-  : >"$VITE_LOG_FILE"
-  echo "[HydraDev] Vite logs: $VITE_LOG_FILE (set HYDRA_DEV_VERBOSE=1 for full output)"
-  (
-    cd "$UI_DIR"
-    HYDRA_UI_CONFIG_PATH="$CONFIG_PATH" npm run dev -- --host 127.0.0.1 --port "$VITE_PORT" --strictPort >"$VITE_LOG_FILE" 2>&1
-  ) &
-fi
-vite_pid=$!
-sleep 1
-if ! kill -0 "$vite_pid" 2>/dev/null; then
-  echo "[HydraDev] Vite failed to start." >&2
-  if [[ "$DEV_VERBOSE" != "1" && -f "$VITE_LOG_FILE" ]]; then
-    echo "[HydraDev] Last Vite log lines:" >&2
-    tail -n 40 "$VITE_LOG_FILE" >&2
+if [[ "$USE_VITE_SERVER" == "1" ]]; then
+  echo "[HydraDev] Starting Vite dev server..."
+  if [[ "$DEV_VERBOSE" == "1" ]]; then
+    (
+      cd "$UI_DIR"
+      HYDRA_UI_CONFIG_PATH="$CONFIG_PATH" npm run dev -- --host 127.0.0.1 --port "$VITE_PORT" --strictPort
+    ) &
+  else
+    mkdir -p "$DEV_LOG_DIR"
+    : >"$VITE_LOG_FILE"
+    echo "[HydraDev] Vite logs: $VITE_LOG_FILE (set HYDRA_DEV_VERBOSE=1 for full output)"
+    (
+      cd "$UI_DIR"
+      HYDRA_UI_CONFIG_PATH="$CONFIG_PATH" npm run dev -- --host 127.0.0.1 --port "$VITE_PORT" --strictPort >"$VITE_LOG_FILE" 2>&1
+    ) &
   fi
-  exit 1
+  vite_pid=$!
+  sleep 1
+  if ! kill -0 "$vite_pid" 2>/dev/null; then
+    echo "[HydraDev] Vite failed to start." >&2
+    if [[ "$DEV_VERBOSE" != "1" && -f "$VITE_LOG_FILE" ]]; then
+      echo "[HydraDev] Last Vite log lines:" >&2
+      tail -n 40 "$VITE_LOG_FILE" >&2
+    fi
+    exit 1
+  fi
+else
+  echo "[HydraDev] asset_mode=prod detected. Skipping Vite dev server."
+  echo "[HydraDev] Building production UI bundles (SSR + client) once..."
+  (
+    cd "$UI_DIR"
+    HYDRA_UI_CONFIG_PATH="$CONFIG_PATH" npm run build
+  )
+
+  echo "[HydraDev] Starting client bundle watch (ui/src -> public/assets/manifest.json)..."
+  (
+    cd "$UI_DIR"
+    HYDRA_UI_CONFIG_PATH="$CONFIG_PATH" npm run build:client -- --watch
+  ) &
+  client_watch_pid=$!
+  sleep 1
+  if ! kill -0 "$client_watch_pid" 2>/dev/null; then
+    echo "[HydraDev] Client watch failed to start. Check logs above." >&2
+    exit 1
+  fi
 fi
 
 echo "[HydraDev] Starting SSR bundle watch (ui/src/entry-ssr.tsx -> public/assets/ssr-bundle.js)..."
@@ -201,9 +260,9 @@ if command -v watchexec >/dev/null 2>&1; then
       --watch "$ROOT_DIR/engine/src" \
       --watch "$ROOT_DIR/engine/include" \
       --watch "$CONFIG_PATH" \
-      --watch "$ROOT_DIR/public/assets/ssr-bundle.js" \
+      --watch "$ROOT_DIR/public/assets" \
       --watch "$ROOT_DIR/CMakeLists.txt" \
-      --exts cc,cpp,cxx,h,hpp,hh,json,txt \
+      --exts cc,cpp,cxx,h,hpp,hh,json,txt,js,css,map \
       -- "$RUN_ONCE_SCRIPT"
 elif command -v fswatch >/dev/null 2>&1; then
   while true; do
@@ -215,7 +274,7 @@ elif command -v fswatch >/dev/null 2>&1; then
       "$ROOT_DIR/engine/src" \
       "$ROOT_DIR/engine/include" \
       "$CONFIG_PATH" \
-      "$ROOT_DIR/public/assets/ssr-bundle.js" \
+      "$ROOT_DIR/public/assets" \
       "$ROOT_DIR/CMakeLists.txt" >/dev/null
 
     kill "$drogon_pid" 2>/dev/null || true

@@ -157,12 +157,26 @@ def run_tests(base_url: str) -> None:
     assert_equal(params.get("postId"), "123", "postId route param")
     query = route.get("query", {})
     assert_equal(query.get("x"), "1", "query passthrough")
+    assert_contains(html, "Post 123: Controller-provided test data", "post 123 seeded content")
 
-    status, html, _ = fetch_text(f"{base_url}/", headers={"Accept-Language": "fr"})
+    status, html, _ = fetch_text(f"{base_url}/posts/456")
+    assert_equal(status, 200, "GET /posts/456 status")
+    props = parse_props(html)
+    route = props.get("__hydra_route", {})
+    assert_equal(route.get("pageId"), "post_detail", "post 456 pageId")
+    assert_contains(html, "Post 456: Alternate route payload", "post 456 seeded content")
+    assert_contains(html, "Hydra Bench Bot", "post 456 author content")
+
+    status, html, home_headers = fetch_text(f"{base_url}/", headers={"Accept-Language": "fr"})
     assert_equal(status, 200, "GET / (fr) status")
     props = parse_props(html)
     req = props.get("__hydra_request", {})
     assert_equal(req.get("locale"), "fr", "locale from accept-language")
+    assert_contains(html, "<div id=\"root\">", "html shell root container")
+    csp_header = home_headers.get("Content-Security-Policy") or home_headers.get("content-security-policy", "")
+    assert_contains(csp_header, "default-src 'self'", "CSP default-src policy")
+    xcto_header = home_headers.get("X-Content-Type-Options") or home_headers.get("x-content-type-options", "")
+    assert_equal(xcto_header.lower(), "nosniff", "X-Content-Type-Options header")
 
     status, html, _ = fetch_text(
         f"{base_url}/",
@@ -201,10 +215,12 @@ def run_tests(base_url: str) -> None:
     assert_equal(status, 200, "GET /__hydra/metrics status")
     assert_contains(metrics, "hydra_render_latency_ms_bucket", "render histogram")
     assert_contains(metrics, "hydra_acquire_wait_ms_bucket", "acquire histogram")
+    assert_contains(metrics, "hydra_request_total_ms_bucket", "request total histogram")
     assert_contains(metrics, "hydra_pool_in_use", "pool gauge")
     assert_contains(metrics, "hydra_render_timeouts_total", "render timeout counter")
     assert_contains(metrics, "hydra_recycles_total", "recycle counter")
     assert_contains(metrics, "hydra_render_errors_total", "render error counter")
+    assert_contains(metrics, "hydra_requests_by_code_total", "request code counter")
 
 
 def main() -> int:

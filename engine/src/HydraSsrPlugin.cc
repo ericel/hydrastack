@@ -1435,19 +1435,20 @@ SsrRenderResult HydraSsrPlugin::renderResult(const drogon::HttpRequestPtr &req,
     }
     const auto acquireStartedAt = std::chrono::steady_clock::now();
     const auto requestStartedAt = acquireStartedAt;
-    std::uint64_t acquireWaitMs = 0;
+    std::uint64_t acquireWaitUs = 0;
+    double acquireWaitMs = 0.0;
     const auto requestMethod = req ? req->methodString() : std::string("GET");
     const auto scriptNonce = devModeEnabled_ ? std::string{} : generateScriptNonce();
-    const auto requestElapsedMs = [&]() {
+    const auto requestElapsedUs = [&]() {
         return static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - requestStartedAt)
                 .count());
     };
 
     const auto logRenderOk = [&](std::uint64_t renderIndex,
-                                 std::uint64_t renderMs,
-                                 std::uint64_t wrapMs,
+                                 double renderMs,
+                                 double wrapMs,
                                  int statusCode) {
         if (!logRenderMetrics_) {
             return;
@@ -1493,7 +1494,7 @@ SsrRenderResult HydraSsrPlugin::renderResult(const drogon::HttpRequestPtr &req,
     };
 
     const auto logRequestRoute = [&](const char *status,
-                                     std::uint64_t totalMs,
+                                     double totalMs,
                                      int statusCode,
                                      const std::string *errorMessage = nullptr) {
         if (!logRequestRoutes_) {
@@ -1547,10 +1548,11 @@ SsrRenderResult HydraSsrPlugin::renderResult(const drogon::HttpRequestPtr &req,
 
     try {
         auto lease = isolatePool_->acquire(isolateAcquireTimeoutMs_);
-        acquireWaitMs = static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(
+        acquireWaitUs = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - acquireStartedAt)
                 .count());
+        acquireWaitMs = static_cast<double>(acquireWaitUs) / 1000.0;
 
         try {
             const auto renderStartedAt = std::chrono::steady_clock::now();
@@ -1561,14 +1563,16 @@ SsrRenderResult HydraSsrPlugin::renderResult(const drogon::HttpRequestPtr &req,
                     requestContextJson,
                     isolatePool_->renderTimeoutMs());
             observeAcquireWait(acquireWaitMs);
-            const auto renderMs = static_cast<std::uint64_t>(
-                std::chrono::duration_cast<std::chrono::milliseconds>(
+            const auto renderUs = static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
                     std::chrono::steady_clock::now() - renderStartedAt)
                     .count());
+            const auto renderMs = static_cast<double>(renderUs) / 1000.0;
             observeRenderLatency(renderMs);
             const auto renderIndex =
                 renderCount_.fetch_add(1, std::memory_order_relaxed) + 1;
-            std::uint64_t wrapMs = 0;
+            std::uint64_t wrapUs = 0;
+            double wrapMs = 0.0;
             SsrRenderResult renderResult;
             if (const auto parsed = tryParseSsrEnvelope(rawRenderOutput); parsed.has_value()) {
                 renderResult = *parsed;
@@ -1601,16 +1605,20 @@ SsrRenderResult HydraSsrPlugin::renderResult(const drogon::HttpRequestPtr &req,
                     renderResult.html,
                     effectivePropsJson,
                     assets);
-                wrapMs = static_cast<std::uint64_t>(
-                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                wrapUs = static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(
                         std::chrono::steady_clock::now() - wrapStartedAt)
                         .count());
-                const auto totalMs = requestElapsedMs();
+                wrapMs = static_cast<double>(wrapUs) / 1000.0;
+                const auto totalUs = requestElapsedUs();
+                const auto totalMs = static_cast<double>(totalUs) / 1000.0;
                 requestOkCount_.fetch_add(1, std::memory_order_relaxed);
-                totalRequestMs_.fetch_add(totalMs, std::memory_order_relaxed);
-                totalAcquireWaitMs_.fetch_add(acquireWaitMs, std::memory_order_relaxed);
-                totalRenderMs_.fetch_add(renderMs, std::memory_order_relaxed);
-                totalWrapMs_.fetch_add(wrapMs, std::memory_order_relaxed);
+                observeRequestCode(renderResult.status);
+                observeRequestLatency(totalMs);
+                totalRequestUs_.fetch_add(totalUs, std::memory_order_relaxed);
+                totalAcquireWaitUs_.fetch_add(acquireWaitUs, std::memory_order_relaxed);
+                totalRenderUs_.fetch_add(renderUs, std::memory_order_relaxed);
+                totalWrapUs_.fetch_add(wrapUs, std::memory_order_relaxed);
                 renderResult.html = std::move(wrappedHtml);
                 renderResult.headers.try_emplace("X-Request-Id", requestId);
                 applySecurityHeaders(&renderResult, true);
@@ -1631,12 +1639,15 @@ SsrRenderResult HydraSsrPlugin::renderResult(const drogon::HttpRequestPtr &req,
                 }
             }
 
-            const auto totalMs = requestElapsedMs();
+            const auto totalUs = requestElapsedUs();
+            const auto totalMs = static_cast<double>(totalUs) / 1000.0;
             requestOkCount_.fetch_add(1, std::memory_order_relaxed);
-            totalRequestMs_.fetch_add(totalMs, std::memory_order_relaxed);
-            totalAcquireWaitMs_.fetch_add(acquireWaitMs, std::memory_order_relaxed);
-            totalRenderMs_.fetch_add(renderMs, std::memory_order_relaxed);
-            totalWrapMs_.fetch_add(wrapMs, std::memory_order_relaxed);
+            observeRequestCode(renderResult.status);
+            observeRequestLatency(totalMs);
+            totalRequestUs_.fetch_add(totalUs, std::memory_order_relaxed);
+            totalAcquireWaitUs_.fetch_add(acquireWaitUs, std::memory_order_relaxed);
+            totalRenderUs_.fetch_add(renderUs, std::memory_order_relaxed);
+            totalWrapUs_.fetch_add(wrapUs, std::memory_order_relaxed);
             renderResult.headers.try_emplace("X-Request-Id", requestId);
             applySecurityHeaders(&renderResult, false);
             logRenderOk(renderIndex, renderMs, wrapMs, renderResult.status);
@@ -1664,11 +1675,14 @@ SsrRenderResult HydraSsrPlugin::renderResult(const drogon::HttpRequestPtr &req,
         if (containsText(message, "SSR render exceeded timeout")) {
             renderTimeoutCount_.fetch_add(1, std::memory_order_relaxed);
         }
-        const auto totalMs = requestElapsedMs();
+        const auto totalUs = requestElapsedUs();
+        const auto totalMs = static_cast<double>(totalUs) / 1000.0;
         requestFailCount_.fetch_add(1, std::memory_order_relaxed);
+        observeRequestCode(500);
+        observeRequestLatency(totalMs);
         renderErrorCount_.fetch_add(1, std::memory_order_relaxed);
-        totalRequestMs_.fetch_add(totalMs, std::memory_order_relaxed);
-        totalAcquireWaitMs_.fetch_add(acquireWaitMs, std::memory_order_relaxed);
+        totalRequestUs_.fetch_add(totalUs, std::memory_order_relaxed);
+        totalAcquireWaitUs_.fetch_add(acquireWaitUs, std::memory_order_relaxed);
         observeAcquireWait(acquireWaitMs);
         logRenderFail(message, 500);
         logRequestRoute("fail", totalMs, 500, &message);
@@ -1681,11 +1695,14 @@ SsrRenderResult HydraSsrPlugin::renderResult(const drogon::HttpRequestPtr &req,
         applySecurityHeaders(&failed, false);
         return failed;
     } catch (...) {
-        const auto totalMs = requestElapsedMs();
+        const auto totalUs = requestElapsedUs();
+        const auto totalMs = static_cast<double>(totalUs) / 1000.0;
         requestFailCount_.fetch_add(1, std::memory_order_relaxed);
+        observeRequestCode(500);
+        observeRequestLatency(totalMs);
         renderErrorCount_.fetch_add(1, std::memory_order_relaxed);
-        totalRequestMs_.fetch_add(totalMs, std::memory_order_relaxed);
-        totalAcquireWaitMs_.fetch_add(acquireWaitMs, std::memory_order_relaxed);
+        totalRequestUs_.fetch_add(totalUs, std::memory_order_relaxed);
+        totalAcquireWaitUs_.fetch_add(acquireWaitUs, std::memory_order_relaxed);
         observeAcquireWait(acquireWaitMs);
         logRenderFail("unknown", 500);
         const std::string unknownError = "unknown";
@@ -1701,9 +1718,9 @@ SsrRenderResult HydraSsrPlugin::renderResult(const drogon::HttpRequestPtr &req,
     }
 }
 
-void HydraSsrPlugin::observeAcquireWait(std::uint64_t valueMs) const {
-    static constexpr std::array<std::uint64_t, kLatencyHistogramBucketCount - 1> kUpperBoundsMs = {
-        1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000};
+void HydraSsrPlugin::observeAcquireWait(double valueMs) const {
+    static constexpr std::array<double, kLatencyHistogramBucketCount - 1> kUpperBoundsMs = {
+        1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0};
     std::size_t bucketIndex = 0;
     while (bucketIndex < kUpperBoundsMs.size() && valueMs > kUpperBoundsMs[bucketIndex]) {
         ++bucketIndex;
@@ -1711,14 +1728,32 @@ void HydraSsrPlugin::observeAcquireWait(std::uint64_t valueMs) const {
     acquireWaitHistogram_[bucketIndex].fetch_add(1, std::memory_order_relaxed);
 }
 
-void HydraSsrPlugin::observeRenderLatency(std::uint64_t valueMs) const {
-    static constexpr std::array<std::uint64_t, kLatencyHistogramBucketCount - 1> kUpperBoundsMs = {
-        1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000};
+void HydraSsrPlugin::observeRenderLatency(double valueMs) const {
+    static constexpr std::array<double, kLatencyHistogramBucketCount - 1> kUpperBoundsMs = {
+        1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0};
     std::size_t bucketIndex = 0;
     while (bucketIndex < kUpperBoundsMs.size() && valueMs > kUpperBoundsMs[bucketIndex]) {
         ++bucketIndex;
     }
     renderLatencyHistogram_[bucketIndex].fetch_add(1, std::memory_order_relaxed);
+}
+
+void HydraSsrPlugin::observeRequestLatency(double valueMs) const {
+    static constexpr std::array<double, kLatencyHistogramBucketCount - 1> kUpperBoundsMs = {
+        1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0};
+    std::size_t bucketIndex = 0;
+    while (bucketIndex < kUpperBoundsMs.size() && valueMs > kUpperBoundsMs[bucketIndex]) {
+        ++bucketIndex;
+    }
+    requestLatencyHistogram_[bucketIndex].fetch_add(1, std::memory_order_relaxed);
+}
+
+void HydraSsrPlugin::observeRequestCode(int statusCode) const {
+    if (statusCode < 100 || statusCode > static_cast<int>(kHttpStatusCodeMax)) {
+        return;
+    }
+    requestCodeCounts_[static_cast<std::size_t>(statusCode)]
+        .fetch_add(1, std::memory_order_relaxed);
 }
 
 HydraMetricsSnapshot HydraSsrPlugin::metricsSnapshot() const {
@@ -1729,10 +1764,14 @@ HydraMetricsSnapshot HydraSsrPlugin::metricsSnapshot() const {
     snapshot.poolTimeouts = poolTimeoutCount_.load(std::memory_order_relaxed);
     snapshot.renderTimeouts = renderTimeoutCount_.load(std::memory_order_relaxed);
     snapshot.runtimeRecycles = runtimeRecycleCount_.load(std::memory_order_relaxed);
-    snapshot.totalAcquireWaitMs = totalAcquireWaitMs_.load(std::memory_order_relaxed);
-    snapshot.totalRenderMs = totalRenderMs_.load(std::memory_order_relaxed);
-    snapshot.totalWrapMs = totalWrapMs_.load(std::memory_order_relaxed);
-    snapshot.totalRequestMs = totalRequestMs_.load(std::memory_order_relaxed);
+    snapshot.totalAcquireWaitUs = totalAcquireWaitUs_.load(std::memory_order_relaxed);
+    snapshot.totalRenderUs = totalRenderUs_.load(std::memory_order_relaxed);
+    snapshot.totalWrapUs = totalWrapUs_.load(std::memory_order_relaxed);
+    snapshot.totalRequestUs = totalRequestUs_.load(std::memory_order_relaxed);
+    snapshot.totalAcquireWaitMs = snapshot.totalAcquireWaitUs / 1000;
+    snapshot.totalRenderMs = snapshot.totalRenderUs / 1000;
+    snapshot.totalWrapMs = snapshot.totalWrapUs / 1000;
+    snapshot.totalRequestMs = snapshot.totalRequestUs / 1000;
     return snapshot;
 }
 
@@ -1741,32 +1780,47 @@ std::string HydraSsrPlugin::metricsPrometheus() const {
     const auto totalRequests = snapshot.requestsOk + snapshot.requestsFail;
     const auto poolInUse = isolatePool_ ? isolatePool_->inUseCount() : 0;
     const auto poolSize = isolatePool_ ? isolatePool_->size() : 0;
-    static constexpr std::array<std::uint64_t, kLatencyHistogramBucketCount - 1> kUpperBoundsMs = {
-        1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000};
+    static constexpr std::array<double, kLatencyHistogramBucketCount - 1> kUpperBoundsMs = {
+        1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0};
 
     std::ostringstream out;
     const auto emitHistogram = [&](const char *name,
+                                   const char *helpText,
                                    const auto &histogramBuckets,
-                                   std::uint64_t sum,
+                                   double sumMs,
                                    std::uint64_t count) {
-        out << "# HELP " << name << " Hydra latency histogram in milliseconds.\n";
+        out << "# HELP " << name << " " << helpText << '\n';
         out << "# TYPE " << name << " histogram\n";
         std::uint64_t cumulative = 0;
         for (std::size_t i = 0; i < kUpperBoundsMs.size(); ++i) {
             cumulative += histogramBuckets[i].load(std::memory_order_relaxed);
-            out << name << "_bucket{le=\"" << kUpperBoundsMs[i] << "\"} "
+            out << name << "_bucket{le=\"" << static_cast<std::uint64_t>(kUpperBoundsMs[i]) << "\"} "
                 << cumulative << '\n';
         }
         cumulative += histogramBuckets[kUpperBoundsMs.size()].load(std::memory_order_relaxed);
         out << name << "_bucket{le=\"+Inf\"} " << cumulative << '\n';
-        out << name << "_sum " << sum << '\n';
+        out << name << "_sum " << sumMs << '\n';
         out << name << "_count " << count << '\n';
     };
 
     emitHistogram(
-        "hydra_acquire_wait_ms", acquireWaitHistogram_, snapshot.totalAcquireWaitMs, totalRequests);
+        "hydra_acquire_wait_ms",
+        "Hydra isolate acquire wait histogram in milliseconds.",
+        acquireWaitHistogram_,
+        static_cast<double>(snapshot.totalAcquireWaitUs) / 1000.0,
+        totalRequests);
     emitHistogram(
-        "hydra_render_latency_ms", renderLatencyHistogram_, snapshot.totalRenderMs, snapshot.requestsOk);
+        "hydra_render_latency_ms",
+        "Hydra engine-side SSR render latency histogram in milliseconds.",
+        renderLatencyHistogram_,
+        static_cast<double>(snapshot.totalRenderUs) / 1000.0,
+        snapshot.requestsOk);
+    emitHistogram(
+        "hydra_request_total_ms",
+        "Hydra end-to-end request latency histogram in milliseconds.",
+        requestLatencyHistogram_,
+        static_cast<double>(snapshot.totalRequestUs) / 1000.0,
+        totalRequests);
 
     out << "# HELP hydra_pool_in_use Number of V8 runtimes currently leased.\n";
     out << "# TYPE hydra_pool_in_use gauge\n";
@@ -1792,6 +1846,16 @@ std::string HydraSsrPlugin::metricsPrometheus() const {
     out << "# TYPE hydra_requests_total counter\n";
     out << "hydra_requests_total{status=\"ok\"} " << snapshot.requestsOk << '\n';
     out << "hydra_requests_total{status=\"fail\"} " << snapshot.requestsFail << '\n';
+
+    out << "# HELP hydra_requests_by_code_total Total SSR requests by HTTP status code.\n";
+    out << "# TYPE hydra_requests_by_code_total counter\n";
+    for (std::size_t statusCode = 100; statusCode <= kHttpStatusCodeMax; ++statusCode) {
+        const auto count = requestCodeCounts_[statusCode].load(std::memory_order_relaxed);
+        if (count == 0) {
+            continue;
+        }
+        out << "hydra_requests_by_code_total{code=\"" << statusCode << "\"} " << count << '\n';
+    }
 
     return out.str();
 }

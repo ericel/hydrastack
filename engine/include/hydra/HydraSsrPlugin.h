@@ -48,6 +48,10 @@ struct HydraMetricsSnapshot {
     std::uint64_t poolTimeouts = 0;
     std::uint64_t renderTimeouts = 0;
     std::uint64_t runtimeRecycles = 0;
+    std::uint64_t totalAcquireWaitUs = 0;
+    std::uint64_t totalRenderUs = 0;
+    std::uint64_t totalWrapUs = 0;
+    std::uint64_t totalRequestUs = 0;
     std::uint64_t totalAcquireWaitMs = 0;
     std::uint64_t totalRenderMs = 0;
     std::uint64_t totalWrapMs = 0;
@@ -93,8 +97,10 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
                                                   const std::string &routeUrl,
                                                   const std::string &requestId) const;
     [[nodiscard]] std::string resolveRequestId(const drogon::HttpRequestPtr &req) const;
-    void observeAcquireWait(std::uint64_t valueMs) const;
-    void observeRenderLatency(std::uint64_t valueMs) const;
+    void observeAcquireWait(double valueMs) const;
+    void observeRenderLatency(double valueMs) const;
+    void observeRequestLatency(double valueMs) const;
+    void observeRequestCode(int statusCode) const;
     [[nodiscard]] V8SsrRuntime::BridgeResponse dispatchApiBridge(
         const V8SsrRuntime::BridgeRequest &request) const;
     void registerDevProxyRoutes();
@@ -156,10 +162,10 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
     mutable std::atomic<std::uint64_t> renderErrorCount_{0};
     mutable std::atomic<std::uint64_t> requestOkCount_{0};
     mutable std::atomic<std::uint64_t> requestFailCount_{0};
-    mutable std::atomic<std::uint64_t> totalAcquireWaitMs_{0};
-    mutable std::atomic<std::uint64_t> totalRenderMs_{0};
-    mutable std::atomic<std::uint64_t> totalWrapMs_{0};
-    mutable std::atomic<std::uint64_t> totalRequestMs_{0};
+    mutable std::atomic<std::uint64_t> totalAcquireWaitUs_{0};
+    mutable std::atomic<std::uint64_t> totalRenderUs_{0};
+    mutable std::atomic<std::uint64_t> totalWrapUs_{0};
+    mutable std::atomic<std::uint64_t> totalRequestUs_{0};
     mutable std::atomic<std::uint64_t> requestIdCounter_{0};
     mutable std::atomic<bool> warnedUnwrappedFragment_{false};
     static constexpr std::size_t kLatencyHistogramBucketCount = 13;
@@ -167,6 +173,11 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
         acquireWaitHistogram_{};
     mutable std::array<std::atomic<std::uint64_t>, kLatencyHistogramBucketCount>
         renderLatencyHistogram_{};
+    mutable std::array<std::atomic<std::uint64_t>, kLatencyHistogramBucketCount>
+        requestLatencyHistogram_{};
+    static constexpr std::size_t kHttpStatusCodeMax = 599;
+    mutable std::array<std::atomic<std::uint64_t>, kHttpStatusCodeMax + 1>
+        requestCodeCounts_{};
     std::unordered_set<std::string> apiBridgeAllowedMethods_ = {"GET", "POST"};
     std::vector<std::string> apiBridgeAllowedPathPrefixes_ = {"/hydra/internal/"};
     std::size_t apiBridgeMaxBodyBytes_ = 64 * 1024;

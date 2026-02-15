@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstdint>
 #include <algorithm>
+#include <string>
 
 namespace demo::controllers {
 namespace {
@@ -37,6 +38,55 @@ Json::Value buildRouteQuery(const drogon::HttpRequestPtr &req) {
     }
 
     return hydra::HydraRoute::toJsonObject(req->getParameters());
+}
+
+Json::Value buildDemoPost(const std::string &postId) {
+    Json::Value post(Json::objectValue);
+    post["id"] = postId;
+    post["title"] = "HydraStack demo post";
+    post["author"] = "Hydra Team";
+    post["summary"] =
+        "This is a seeded post payload from the C++ controller for SSR and hydration demos.";
+    post["body"] =
+        "HydraStack keeps routing in Drogon and rendering in React SSR. This post payload "
+        "comes from Home.cc so UI can render deterministic data on both server and client.";
+    post["publishedAt"] = "2026-02-15";
+    post["readMinutes"] = 4;
+    post["likes"] = 128;
+    post["tags"] = Json::arrayValue;
+    post["tags"].append("hydrastack");
+    post["tags"].append("drogon");
+    post["tags"].append("react-ssr");
+
+    if (postId == "123") {
+        post["title"] = "Post 123: Controller-provided test data";
+        post["summary"] = "Seed data from C++ controller flowing into React SSR.";
+        post["body"] =
+            "Route /posts/123 now includes test content from the Home controller. "
+            "Use this to verify request context, hydration match, and route contracts.";
+        post["likes"] = 321;
+        post["readMinutes"] = 6;
+        post["tags"] = Json::arrayValue;
+        post["tags"].append("routing");
+        post["tags"].append("controller");
+        post["tags"].append("hydration");
+    } else if (postId == "456") {
+        post["title"] = "Post 456: Alternate route payload";
+        post["author"] = "Hydra Bench Bot";
+        post["summary"] = "A second seeded route to make data differences obvious.";
+        post["body"] =
+            "This route intentionally returns different values so /posts/123 and /posts/456 "
+            "render visibly different SSR output.";
+        post["publishedAt"] = "2026-02-16";
+        post["readMinutes"] = 2;
+        post["likes"] = 42;
+        post["tags"] = Json::arrayValue;
+        post["tags"].append("alternate");
+        post["tags"].append("route-contract");
+        post["tags"].append("sample-data");
+    }
+
+    return post;
 }
 }  // namespace
 
@@ -102,6 +152,7 @@ class Home final : public drogon::HttpController<Home> {
         props["path"] = path;
         props["pathWithQuery"] = pathWithQuery;
         props["postId"] = postId;
+        props["post"] = buildDemoPost(postId);
         props["messageKey"] = "post_detail_title";
         hydra::HydraRoute::set(
             props,

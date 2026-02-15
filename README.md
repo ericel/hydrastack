@@ -6,12 +6,31 @@ HydraStack is a framework layer on top of Drogon that embeds V8 for React SSR. D
 
 `(url, propsJson) -> html`
 
+Rendering boundary (React-first):
+
+- App/page markup templates live in React SSR (`ui/src/entry-ssr.tsx`, `ui/src/App.tsx`).
+- C++ owns outer document shell + runtime policy (`HtmlShell` wrapping, CSP/security headers in `HydraSsrPlugin`).
+- No separate server-side HTML template engine is required for app pages.
+
 ## v0.1 Scope
 
 - No Node runtime dependency in production.
 - V8 isolate pool for multi-threaded rendering.
 - Single deterministic SSR bundle loaded by C++.
 - Independent client bundle for hydration.
+
+## Stability & Support
+
+HydraStack is currently **v0.1 beta**.
+
+- Stable for internal use and prototype production deployments.
+- Core architecture is stable: Drogon routing/data authority + React SSR rendering + C++ shell/security policy.
+- Before `v1.0`, some config keys, CLI/scaffold ergonomics, and demo/template details may still evolve.
+
+Compatibility policy for `v0.x`:
+
+- Breaking changes are still possible.
+- When breaking changes happen, they are documented in `README` milestone notes and migration guidance.
 
 ## Build Notes
 
@@ -161,6 +180,10 @@ Notes:
 - Dev output is concise by default (focus on app URL and rebuild flow).
   - Full Vite terminal output: `HYDRA_DEV_VERBOSE=1 ./scripts/dev.sh`
   - Default Vite log file: `.hydra/logs/vite-dev.log`
+- `hydra dev --prod` now runs in production-asset loop:
+  - skips Vite dev server (`asset_mode=prod`)
+  - builds SSR + client bundles once at startup
+  - watches both SSR and client builds so manifest/hash changes are refreshed
 - `main.cc` also supports `HYDRA_CONFIG` env var or a CLI arg:
   - `HYDRA_CONFIG=app/config.dev.json ./build/hydra_demo`
   - `./build/hydra_demo app/config.dev.json`
@@ -207,6 +230,42 @@ curl -s "http://127.0.0.1:8070/?counter=1" | rg "Isolate counter"
 curl -s "http://127.0.0.1:8070/?counter=1" | rg "Isolate counter"
 ```
 With `pool_size=1`, the counter should increase monotonically between requests.
+
+### Local Load Baseline (Example, localhost)
+
+The following measurements are from one local machine and are intended as a baseline, not a hard SLA:
+
+- Fast route (`/`) at `c=100`: ~9,278 req/s, p95 ~16ms, p99 ~31ms, 0 failures.
+- Fast route (`/`) at `c=200`: ~8,964 req/s, p95 ~36ms, p99 ~74ms, 0 failures.
+- Fast route (`/`) at `c=400`: timeouts/errors begin (observed non-2xx and timeout counter increments), p99 ~189ms.
+- Practical takeaway for this setup: route `/` is clean at 100-200 concurrency; 400 is beyond clean stability.
+
+Real SSR saturation sample (`?burn_ms=10`):
+
+- `c=50`: ~824.6 req/s, mean ~60.6ms, p95 ~76ms, p99 ~118ms, 0 AB failures.
+- Mean latency above 10ms is expected: queueing + isolate pool contention + HTTP overhead.
+
+Metric interpretation notes:
+
+- `hydra_render_latency_ms` is engine-side SSR render time, not full request time.
+- `hydra_request_total_ms` is end-to-end server-side request handling time.
+- `hydra_acquire_wait_ms` measures isolate wait inside handler execution. If `threads_num == pool_size`, queueing can happen before isolate acquire, so acquire-wait may remain low while request latency grows.
+
+To force observable isolate contention and validate acquire-wait:
+
+1. Run with `threads_num > pool_size` (for example `threads_num=16`, `pool_size=4`) and `acquire_timeout_ms=0`.
+2. Capture metrics before and after a burn run, then compare deltas:
+```bash
+curl -s http://127.0.0.1:8070/__hydra/metrics > /tmp/hydra-metrics-before.txt
+ab -k -n 20000 -c 100 "http://127.0.0.1:8070/?burn_ms=20"
+curl -s http://127.0.0.1:8070/__hydra/metrics > /tmp/hydra-metrics-after.txt
+```
+3. Inspect delta changes in `hydra_acquire_wait_ms_(bucket|sum|count)`, `hydra_request_total_ms_(bucket|sum|count)`, and `hydra_requests_by_code_total`.
+
+To protect timeout tests from acquire-timeout interference:
+
+- Use `acquire_timeout_ms=0` (or a very large value) when validating render timeouts.
+- Keep concurrency modest for timeout-path checks (for example `c=4`) so failures are render-driven, not acquire-driven.
 
 ## Milestone 3 Notes (Manifest + Hashed Assets)
 
@@ -403,12 +462,15 @@ Prometheus endpoint:
 
 Metrics include:
 
-- `hydra_render_latency_ms` (histogram)
-- `hydra_acquire_wait_ms` (histogram)
+- `hydra_render_latency_ms` (histogram, engine-side SSR render time)
+- `hydra_acquire_wait_ms` (histogram, isolate acquire wait time)
+- `hydra_request_total_ms` (histogram, end-to-end request handling time)
 - `hydra_pool_in_use` (gauge)
 - `hydra_render_timeouts_total`
 - `hydra_recycles_total`
 - `hydra_render_errors_total`
+- `hydra_requests_by_code_total` (counter with `code` label)
+- `hydra_requests_total` (counter with `status=ok|fail`)
 
 API bridge hardening:
 

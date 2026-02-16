@@ -15,6 +15,21 @@ type CssObfuscationConfig = {
 };
 
 type HydraPluginConfig = Record<string, unknown>;
+const GENERATED_ASSET_PATTERN = /^.+-[a-z0-9_-]{8,}\.[a-z0-9]+(?:\.map)?$/i;
+const LEGACY_GENERATED_ASSET_FILES = new Set([
+  "client.js",
+  "client.js.map",
+  "app.js",
+  "app.js.map"
+]);
+const PRESERVED_ASSET_FILES = new Set([
+  "ssr-bundle.js",
+  "ssr-bundle.js.map",
+  "manifest.json",
+  "classmap.json",
+  "app.css",
+  "app.css.map"
+]);
 
 function readJsonFile(filePath: string): Record<string, unknown> | null {
   if (!fs.existsSync(filePath)) {
@@ -328,8 +343,51 @@ function createCssObfuscationPlugin(
   };
 }
 
+function createPruneHashedAssetsPlugin(options: { enabled: boolean }): Plugin {
+  return {
+    name: "hydra-prune-hashed-assets",
+    apply: "build",
+    writeBundle(outputOptions, bundle) {
+      if (!options.enabled) {
+        return;
+      }
+
+      const outputDir = typeof outputOptions.dir === "string" ? outputOptions.dir : outDir;
+      if (!fs.existsSync(outputDir)) {
+        return;
+      }
+
+      const emittedFiles = new Set<string>();
+      for (const emitted of Object.values(bundle)) {
+        emittedFiles.add(emitted.fileName);
+      }
+
+      for (const entry of fs.readdirSync(outputDir, { withFileTypes: true })) {
+        if (!entry.isFile()) {
+          continue;
+        }
+
+        const fileName = entry.name;
+        if (PRESERVED_ASSET_FILES.has(fileName) || emittedFiles.has(fileName)) {
+          continue;
+        }
+        if (LEGACY_GENERATED_ASSET_FILES.has(fileName)) {
+          fs.unlinkSync(resolve(outputDir, fileName));
+          continue;
+        }
+        if (!GENERATED_ASSET_PATTERN.test(fileName)) {
+          continue;
+        }
+
+        fs.unlinkSync(resolve(outputDir, fileName));
+      }
+    }
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const isSsrBundle = mode === "ssr";
+  const isWatchMode = process.argv.includes("--watch");
   const cssObfuscation = readCssObfuscationConfig();
   const build: UserConfig["build"] = {
     outDir,
@@ -380,6 +438,9 @@ export default defineConfig(({ mode }) => {
         enabled: cssObfuscation.enabled,
         emitClassmap: cssObfuscation.emitClassmap,
         isSsrBundle
+      }),
+      createPruneHashedAssetsPlugin({
+        enabled: !isSsrBundle && !isWatchMode
       }),
       react()
     ],

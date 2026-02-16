@@ -164,6 +164,7 @@ HydraStack expects two UI build passes:
 
 - SSR bundle: deterministic `public/assets/ssr-bundle.js`
 - Client bundle: hashed JS/CSS plus `public/assets/manifest.json`
+- Client build prunes stale hashed assets in `public/assets` (non-watch builds)
 
 ```bash
 cd ui
@@ -347,7 +348,14 @@ Normalization and fallback:
 ### Theme Pathway
 
 HydraStack can resolve a request theme and inject it into SSR context as
-`__hydra_request.theme` (and optionally `__hydra_request.themeCandidates`).
+`__hydra_request.theme`.
+
+Theme metadata is also injected for dynamic UI handling:
+
+- `__hydra_request.themeSupportedThemes` (ordered resolved allowlist)
+- `__hydra_request.themeCookieName`
+- `__hydra_request.themeQueryParam`
+- `__hydra_request.themeCandidates` (optional, controlled by `includeThemeCandidates`)
 
 `theme` plugin config keys:
 
@@ -366,6 +374,7 @@ Resolution order:
 UI behavior:
 
 - App root sets `data-theme` from `__hydra_request.theme`.
+- Theme toggles should cycle `themeSupportedThemes` and persist via `themeCookieName`.
 - Theme tokens are defined in `ui/src/styles.css`.
 - Built-in demo themes: `ocean`, `sunset`, `forest`.
 

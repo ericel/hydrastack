@@ -7,9 +7,6 @@ type AppProps = {
   initialProps: Record<string, unknown>;
 };
 
-const SUPPORTED_THEMES = ["ocean", "sunset", "forest"] as const;
-type ThemeName = (typeof SUPPORTED_THEMES)[number];
-
 function asString(value: unknown, fallback: string): string {
   return typeof value === "string" ? value : fallback;
 }
@@ -44,6 +41,36 @@ function asStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string");
 }
 
+function normalizeThemeName(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+}
+
+function buildThemeSequence(
+  supportedThemes: unknown,
+  themeCandidates: unknown,
+  fallbackTheme: string
+): string[] {
+  const sequence: string[] = [];
+  const append = (theme: string): void => {
+    if (!theme || sequence.includes(theme)) {
+      return;
+    }
+    sequence.push(theme);
+  };
+
+  for (const theme of asStringArray(supportedThemes)) {
+    append(normalizeThemeName(theme));
+  }
+  for (const theme of asStringArray(themeCandidates)) {
+    append(normalizeThemeName(theme));
+  }
+  append(normalizeThemeName(fallbackTheme));
+  if (sequence.length === 0) {
+    sequence.push("ocean");
+  }
+  return sequence;
+}
+
 function asStringRecord(value: unknown): Record<string, string> {
   if (typeof value !== "object" || value === null) {
     return {};
@@ -58,14 +85,6 @@ function asStringRecord(value: unknown): Record<string, string> {
     }
   }
   return out;
-}
-
-function normalizeTheme(value: string): ThemeName {
-  const normalized = value.toLowerCase();
-  if (SUPPORTED_THEMES.includes(normalized as ThemeName)) {
-    return normalized as ThemeName;
-  }
-  return "ocean";
 }
 
 export default function App({ url, initialProps }: AppProps): JSX.Element {
@@ -100,8 +119,15 @@ export default function App({ url, initialProps }: AppProps): JSX.Element {
     .join(", ");
   const isPostDetailPage = pageId === "post_detail";
   const requestLocale = asString(requestContext.locale, "en").toLowerCase();
-  const requestTheme = normalizeTheme(asString(requestContext.theme, "ocean"));
-  const [activeTheme, setActiveTheme] = React.useState<ThemeName>(requestTheme);
+  const requestTheme = normalizeThemeName(asString(requestContext.theme, "ocean")) || "ocean";
+  const themeSequence = buildThemeSequence(
+    requestContext.themeSupportedThemes,
+    requestContext.themeCandidates,
+    requestTheme
+  );
+  const themeCookieName = asString(requestContext.themeCookieName, "hydra_theme").trim() || "hydra_theme";
+  const initialTheme = themeSequence.includes(requestTheme) ? requestTheme : themeSequence[0];
+  const [activeTheme, setActiveTheme] = React.useState<string>(initialTheme);
   const i18n = React.useMemo(() => createGettext(requestLocale), [requestLocale]);
   const gettext = i18n.gettext;
   const _ = i18n._;
@@ -122,16 +148,25 @@ export default function App({ url, initialProps }: AppProps): JSX.Element {
   const requestUrl = asString(requestContext.url, "");
   const bridgeStatus = asNumber(initialProps.__hydra_bridge_status);
   const bridgeBody = asString(initialProps.__hydra_bridge_body, "");
+
+  React.useEffect(() => {
+    setActiveTheme(initialTheme);
+  }, [initialTheme]);
+
   const toggleTheme = React.useCallback(() => {
     setActiveTheme((current) => {
-      const index = SUPPORTED_THEMES.indexOf(current);
-      const next = SUPPORTED_THEMES[(index + 1) % SUPPORTED_THEMES.length];
+      if (themeSequence.length === 0) {
+        return current;
+      }
+      const currentIndex = themeSequence.indexOf(current);
+      const normalizedIndex = currentIndex >= 0 ? currentIndex : 0;
+      const next = themeSequence[(normalizedIndex + 1) % themeSequence.length];
       if (typeof document !== "undefined") {
-        document.cookie = `hydra_theme=${next}; path=/; max-age=31536000`;
+        document.cookie = `${encodeURIComponent(themeCookieName)}=${encodeURIComponent(next)}; path=/; max-age=31536000`;
       }
       return next;
     });
-  }, []);
+  }, [themeCookieName, themeSequence]);
 
   return (
     <main data-theme={activeTheme} className="min-h-screen hydra-theme-bg">

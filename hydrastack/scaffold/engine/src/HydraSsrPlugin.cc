@@ -582,6 +582,18 @@ Json::Value HydraSsrPlugin::buildRequestContext(const drogon::HttpRequestPtr &re
     context["routeUrl"] = routeUrl;
     context["locale"] = i18nDefaultLocale_;
     context["theme"] = themeDefault_;
+    context["themeCookieName"] = themeCookieName_;
+    context["themeQueryParam"] = themeQueryParam_;
+    {
+        Json::Value supportedThemes(Json::arrayValue);
+        for (const auto &themeName : themeSupportedThemeOrder_) {
+            supportedThemes.append(themeName);
+        }
+        if (supportedThemes.empty()) {
+            supportedThemes.append(themeDefault_);
+        }
+        context["themeSupportedThemes"] = std::move(supportedThemes);
+    }
     if (!req) {
         context["routePath"] = routeUrl;
         context["pathWithQuery"] = routeUrl;

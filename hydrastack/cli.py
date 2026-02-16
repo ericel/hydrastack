@@ -18,8 +18,8 @@ SOURCE_EXTENSIONS = {".ts", ".tsx", ".js", ".jsx"}
 TRANSLATION_CALL_PATTERN = re.compile(
     r"\b(?:gettext|_)\(\s*(?P<quote>['\"])(?P<msgid>(?:\\.|(?!\1).)*)\1\s*\)"
 )
-SCAFFOLD_DIRS = ("demo", "cmake", "engine", "scripts", "ui")
-SCAFFOLD_FILES = ("CMakeLists.txt", "conanfile.py", "README.md", "LICENSE", ".gitignore", "hydra")
+SCAFFOLD_DIRS = ("app", "cmake", "engine", "scripts", "ui")
+SCAFFOLD_FILES = ("CMakeLists.txt", "conanfile.py", ".gitignore")
 SCAFFOLD_IGNORE_NAMES = {
     ".git",
     ".idea",
@@ -28,6 +28,84 @@ SCAFFOLD_IGNORE_NAMES = {
     "__pycache__",
     "node_modules",
 }
+APP_README_TEMPLATE = """# {app_name}
+
+Generated with HydraStack.
+
+This project expects the `hydra` CLI to be installed and available on `PATH`.
+
+## Quick Start
+
+Development:
+```bash
+hydra dev
+```
+
+Build:
+```bash
+hydra build
+```
+
+Run:
+```bash
+hydra run
+```
+
+Health checks:
+```bash
+hydra doctor
+```
+"""
+
+APP_README_EXTERNAL_ENGINE_SECTION = """
+## External Engine Dependency
+
+This app links an installed HydraStack engine package via `HydraStack::hydra_engine`.
+
+Before configure/build, ensure CMake can locate HydraStack:
+```bash
+export CMAKE_PREFIX_PATH="$HOME/.local/hydrastack:$CMAKE_PREFIX_PATH"
+```
+"""
+
+THIRD_PARTY_NOTICES_TEMPLATE = """# Third-Party Notices
+
+This project vendors parts of a third-party framework.
+
+## HydraStack
+
+- Project: HydraStack
+- License: MIT
+
+```text
+{license_text}
+```
+"""
+EXTERNAL_ENGINE_CMAKELISTS = """cmake_minimum_required(VERSION 3.20)
+project(HydraStackApp VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(drogon CONFIG REQUIRED)
+find_package(jsoncpp CONFIG REQUIRED)
+find_package(HydraStack CONFIG REQUIRED)
+
+add_executable(hydra_demo
+  app/src/main.cc
+  app/src/controllers/Home.cc
+)
+
+target_link_libraries(hydra_demo
+  PRIVATE
+    HydraStack::hydra_engine
+)
+
+target_compile_definitions(hydra_demo
+  PRIVATE
+    HYDRA_PUBLIC_DIR=\\"${CMAKE_CURRENT_SOURCE_DIR}/public\\"
+)
+"""
 
 
 def resolve_template_root(template_root_arg: str | None) -> Path:
@@ -46,8 +124,8 @@ def resolve_template_root(template_root_arg: str | None) -> Path:
 
     package_root = Path(__file__).resolve().parent
     candidates = [
-        package_root.parent,
         package_root / "scaffold",
+        package_root.parent,
     ]
 
     for candidate in candidates:
@@ -327,8 +405,8 @@ def resolve_mode_paths(
     config_arg: str | None,
 ) -> Tuple[Path, Path]:
     def default_config_for_mode() -> Path:
-        preferred = root / ("demo/config.json" if mode == "prod" else "demo/config.dev.json")
-        legacy = root / ("app/config.json" if mode == "prod" else "app/config.dev.json")
+        preferred = root / ("app/config.json" if mode == "prod" else "app/config.dev.json")
+        legacy = root / ("demo/config.json" if mode == "prod" else "demo/config.dev.json")
         if preferred.exists() or not legacy.exists():
             return preferred
         return legacy
@@ -352,6 +430,455 @@ def resolve_mode_paths(
     return build_dir.resolve(), config_path.resolve()
 
 
+def parse_cmake_cache(cache_file: Path) -> Dict[str, str]:
+    values: Dict[str, str] = {}
+    if not cache_file.exists():
+        return values
+    for raw_line in cache_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or line.startswith("//"):
+            continue
+        if ":" not in line or "=" not in line:
+            continue
+        key_with_type, value = line.split("=", 1)
+        key, _sep, _type = key_with_type.partition(":")
+        cleaned_key = key.strip()
+        if cleaned_key and cleaned_key not in values:
+            values[cleaned_key] = value.strip()
+    return values
+
+
+def project_uses_external_engine(root: Path) -> bool:
+    cmake_file = root / "CMakeLists.txt"
+    if not cmake_file.exists():
+        return False
+    text = cmake_file.read_text(encoding="utf-8", errors="ignore")
+    return (
+        "find_package(HydraStack CONFIG REQUIRED)" in text
+        and "HydraStack::hydra_engine" in text
+    )
+
+
+def find_hydrastack_config_candidates(root: Path, cache: Mapping[str, str]) -> List[Path]:
+    results: List[Path] = []
+    seen: Set[Path] = set()
+
+    def add_if_exists(path: Path) -> None:
+        resolved = path.resolve()
+        if resolved in seen:
+            return
+        if resolved.exists():
+            seen.add(resolved)
+            results.append(resolved)
+
+    hydra_dir = cache.get("HydraStack_DIR", "").strip()
+    if hydra_dir:
+        add_if_exists(Path(hydra_dir) / "HydraStackConfig.cmake")
+
+    raw_prefix_path = os.environ.get("CMAKE_PREFIX_PATH", "").strip()
+    cache_prefix_path = cache.get("CMAKE_PREFIX_PATH", "").strip()
+    prefix_entries: List[str] = []
+    if raw_prefix_path:
+        prefix_entries.extend(raw_prefix_path.split(os.pathsep))
+    if cache_prefix_path:
+        prefix_entries.extend(cache_prefix_path.split(os.pathsep))
+    prefix_entries.extend(
+        [
+            str(root / ".local" / "hydrastack"),
+            str(Path.home() / ".local" / "hydrastack"),
+            "/usr/local",
+            "/opt/homebrew",
+            "/usr",
+        ]
+    )
+
+    for raw_prefix in prefix_entries:
+        cleaned = raw_prefix.strip()
+        if not cleaned:
+            continue
+        prefix = Path(cleaned)
+        add_if_exists(prefix / "lib" / "cmake" / "HydraStack" / "HydraStackConfig.cmake")
+
+    return results
+
+
+def first_valid_hydrastack_config(candidates: Sequence[Path]) -> Path | None:
+    for candidate in candidates:
+        targets = candidate.with_name("HydraStackTargets.cmake")
+        if targets.exists():
+            return candidate
+    return None
+
+
+def detect_hydrastack_source_checkout() -> Path | None:
+    package_root = Path(__file__).resolve().parent
+    source_root = package_root.parent
+    required = ("CMakeLists.txt", "conanfile.py", "engine")
+    for entry in required:
+        if not (source_root / entry).exists():
+            return None
+    return source_root
+
+
+def bootstrap_hydrastack_engine_install(mode: str) -> Path | None:
+    source_root = detect_hydrastack_source_checkout()
+    if source_root is None:
+        return None
+
+    if not shutil.which("conan"):
+        raise ValueError(
+            "HydraStack package not found for external-engine app, and conan is unavailable "
+            "for automatic engine bootstrap."
+        )
+
+    prefix_env = os.environ.get("HYDRA_ENGINE_PREFIX", "").strip()
+    install_prefix = (
+        Path(prefix_env).expanduser().resolve()
+        if prefix_env
+        else (Path.home() / ".local" / "hydrastack").resolve()
+    )
+    build_dir = source_root / "build-engine"
+    build_type = "Release" if mode == "prod" else "Debug"
+
+    print(
+        f"[hydra] HydraStack package missing; bootstrapping engine to {install_prefix} "
+        f"from {source_root} ..."
+    )
+    run_command(
+        [
+            "conan",
+            "install",
+            ".",
+            "--output-folder",
+            str(build_dir),
+            "--build=missing",
+            "-s",
+            f"build_type={build_type}",
+        ],
+        cwd=source_root,
+    )
+
+    cmake_cmd = [
+        "cmake",
+        "-S",
+        str(source_root),
+        "-B",
+        str(build_dir),
+        f"-DCMAKE_BUILD_TYPE={build_type}",
+        "-DHYDRA_BUILD_DEMO=OFF",
+        "-DHYDRA_BUILD_UI=OFF",
+        f"-DCMAKE_INSTALL_PREFIX={install_prefix}",
+        "-DHYDRA_V8_AUTODETECT=ON",
+    ]
+    conan_toolchain = build_dir / "conan_toolchain.cmake"
+    if conan_toolchain.exists():
+        cmake_cmd.append(f"-DCMAKE_TOOLCHAIN_FILE={conan_toolchain}")
+    v8_include = os.environ.get("V8_INCLUDE_DIR", "").strip()
+    v8_libs = os.environ.get("V8_LIBRARIES", "").strip()
+    if v8_include:
+        cmake_cmd.append(f"-DV8_INCLUDE_DIR={v8_include}")
+    if v8_libs:
+        cmake_cmd.append(f"-DV8_LIBRARIES={v8_libs}")
+
+    run_command(cmake_cmd, cwd=source_root)
+    run_command(["cmake", "--build", str(build_dir), "-j", str(max(1, os.cpu_count() or 1))], cwd=source_root)
+    run_command(["cmake", "--install", str(build_dir)], cwd=source_root)
+    return install_prefix
+
+
+def describe_v8_from_targets(targets_file: Path) -> Tuple[bool, str]:
+    if not targets_file.exists():
+        return False, f"missing targets file: {targets_file}"
+    text = targets_file.read_text(encoding="utf-8", errors="ignore")
+    has_v8_hint = any(
+        token in text
+        for token in (
+            "v8_monolith",
+            "v8_libplatform",
+            "libv8",
+            "/v8/",
+            "V8_COMPRESS_POINTERS",
+            "V8_ENABLE_SANDBOX",
+        )
+    )
+    if not has_v8_hint:
+        return False, "HydraStackTargets.cmake has no V8 include/link hints"
+    return True, "V8 include/link hints found in HydraStackTargets.cmake"
+
+
+def validate_v8_for_runtime(root: Path, build_dir: Path) -> None:
+    cache_file = build_dir / "CMakeCache.txt"
+    if not cache_file.exists():
+        raise ValueError(
+            f"missing CMake cache in {build_dir}. Build/configure the project before running."
+        )
+
+    cache = parse_cmake_cache(cache_file)
+    if project_uses_external_engine(root):
+        hydra_dir = cache.get("HydraStack_DIR", "").strip()
+        if not hydra_dir:
+            raise ValueError(
+                "HydraStack_DIR is missing from CMake cache. "
+                "Set CMAKE_PREFIX_PATH to your HydraStack install prefix and reconfigure."
+            )
+        config_file = Path(hydra_dir) / "HydraStackConfig.cmake"
+        if not config_file.exists():
+            raise ValueError(f"HydraStackConfig.cmake not found at {config_file}")
+        ok, detail = describe_v8_from_targets(config_file.with_name("HydraStackTargets.cmake"))
+        if not ok:
+            raise ValueError(f"installed HydraStack package is not V8-ready: {detail}")
+        return
+
+    v8_include = cache.get("V8_INCLUDE_DIR", "").strip()
+    v8_libs = cache.get("V8_LIBRARIES", "").strip()
+    if not v8_include or v8_include == "...":
+        raise ValueError(
+            "V8_INCLUDE_DIR is missing in CMake cache. "
+            "Reconfigure with -DV8_INCLUDE_DIR=... or enable autodetect."
+        )
+    if not Path(v8_include).exists():
+        raise ValueError(f"V8 include directory does not exist: {v8_include}")
+    if not v8_libs or v8_libs == "...":
+        raise ValueError(
+            "V8_LIBRARIES is missing in CMake cache. "
+            "Reconfigure with -DV8_LIBRARIES=... or enable autodetect."
+        )
+
+    missing_libraries: List[str] = []
+    for item in [part.strip() for part in v8_libs.split(";") if part.strip()]:
+        library_path = Path(item)
+        if library_path.is_absolute() and not library_path.exists():
+            missing_libraries.append(item)
+    if missing_libraries:
+        raise ValueError(
+            "configured V8 libraries are missing: " + ", ".join(missing_libraries)
+        )
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve()
+    mode = normalize_mode(args)
+    build_dir, _config_path = resolve_mode_paths(root, mode, args.build_dir, None)
+    cache_file = build_dir / "CMakeCache.txt"
+    cache = parse_cmake_cache(cache_file)
+    external_engine = project_uses_external_engine(root)
+
+    failures = 0
+
+    def report(ok: bool, name: str, detail: str) -> None:
+        nonlocal failures
+        status = "PASS" if ok else "FAIL"
+        if not ok:
+            failures += 1
+        print(f"[doctor] {status} {name}: {detail}")
+
+    report(True, "project", f"root={root}")
+    report(
+        True,
+        "workflow",
+        "external-engine" if external_engine else "vendored-engine",
+    )
+
+    if cache_file.exists():
+        report(True, "build cache", f"found {cache_file}")
+    else:
+        report(False, "build cache", f"missing {cache_file}")
+
+    if external_engine:
+        configs = find_hydrastack_config_candidates(root, cache)
+        if configs:
+            report(True, "HydraStackConfig visibility", str(configs[0]))
+            ok, detail = describe_v8_from_targets(
+                configs[0].with_name("HydraStackTargets.cmake")
+            )
+            report(ok, "V8 detect result", detail)
+        else:
+            report(
+                False,
+                "HydraStackConfig visibility",
+                "not found in HydraStack_DIR/CMAKE_PREFIX_PATH/default prefixes",
+            )
+            report(False, "V8 detect result", "cannot verify without HydraStackConfig.cmake")
+
+        raw_prefix_path = os.environ.get("CMAKE_PREFIX_PATH", "").strip()
+        if raw_prefix_path:
+            entries = [part for part in raw_prefix_path.split(os.pathsep) if part.strip()]
+            missing_entries = [entry for entry in entries if not Path(entry).exists()]
+            if missing_entries:
+                report(
+                    False,
+                    "prefix sanity",
+                    "non-existent entries in CMAKE_PREFIX_PATH: "
+                    + ", ".join(missing_entries),
+                )
+            else:
+                report(True, "prefix sanity", "CMAKE_PREFIX_PATH entries exist")
+        else:
+            hydra_dir = cache.get("HydraStack_DIR", "").strip()
+            if hydra_dir and Path(hydra_dir).exists():
+                report(True, "prefix sanity", f"using cached HydraStack_DIR={hydra_dir}")
+            else:
+                report(
+                    False,
+                    "prefix sanity",
+                    "CMAKE_PREFIX_PATH is empty and HydraStack_DIR is unavailable",
+                )
+    else:
+        try:
+            validate_v8_for_runtime(root, build_dir)
+            v8_include = cache.get("V8_INCLUDE_DIR", "").strip() if cache else "<missing>"
+            report(True, "V8 detect result", f"V8_INCLUDE_DIR={v8_include}")
+        except ValueError as exc:
+            report(False, "V8 detect result", str(exc))
+
+        auto_detect = cache.get("HYDRA_V8_AUTODETECT", "").strip()
+        if auto_detect:
+            report(True, "prefix sanity", f"HYDRA_V8_AUTODETECT={auto_detect}")
+        else:
+            report(True, "prefix sanity", "no prefix requirement for vendored-engine mode")
+
+    if failures:
+        raise ValueError(f"doctor failed ({failures} check(s))")
+    print("[doctor] all checks passed")
+    return 0
+
+
+def write_external_engine_cmakelists(path: Path) -> None:
+    path.write_text(EXTERNAL_ENGINE_CMAKELISTS, encoding="utf-8")
+
+
+def patch_conanfile_for_external_engine(path: Path) -> None:
+    if not path.exists():
+        return
+    original = path.read_text(encoding="utf-8")
+    updated = original.replace('        "engine/*",\n', "")
+    updated = updated.replace('        "cmake/*",\n', "")
+    updated = updated.replace('        "LICENSE",\n', "")
+    if updated != original:
+        path.write_text(updated, encoding="utf-8")
+
+
+def replace_in_file(path: Path, replacements: Sequence[Tuple[str, str]]) -> None:
+    if not path.exists():
+        return
+    original = path.read_text(encoding="utf-8")
+    updated = original
+    for before, after in replacements:
+        updated = updated.replace(before, after)
+    if updated != original:
+        path.write_text(updated, encoding="utf-8")
+
+
+def write_app_readme(destination: Path, external_engine: bool) -> None:
+    content = APP_README_TEMPLATE.format(app_name=destination.name)
+    if external_engine:
+        content += APP_README_EXTERNAL_ENGINE_SECTION
+    (destination / "README.md").write_text(content, encoding="utf-8")
+
+
+def write_third_party_notices(destination: Path, template_root: Path) -> None:
+    license_file = template_root / "LICENSE"
+    license_text = "MIT License"
+    if license_file.exists():
+        license_text = license_file.read_text(encoding="utf-8").strip()
+    content = THIRD_PARTY_NOTICES_TEMPLATE.format(license_text=license_text)
+    (destination / "THIRD_PARTY_NOTICES.md").write_text(content, encoding="utf-8")
+
+
+def resolve_dev_script(root: Path) -> Path:
+    project_script = root / "scripts" / "dev.sh"
+    if project_script.exists():
+        return project_script
+
+    template_root = resolve_template_root(None)
+    packaged_script = template_root / "scripts" / "dev.sh"
+    if packaged_script.exists():
+        return packaged_script
+
+    raise ValueError(
+        "missing dev script. Expected scripts/dev.sh in project or bundled scaffold package."
+    )
+
+
+def normalize_generated_layout_to_app(destination: Path) -> None:
+    replace_in_file(
+        destination / "CMakeLists.txt",
+        (
+            ("demo/src/main.cc", "app/src/main.cc"),
+            ("demo/src/controllers/Home.cc", "app/src/controllers/Home.cc"),
+        ),
+    )
+    replace_in_file(
+        destination / "conanfile.py",
+        (('"demo/*",', '"app/*",'),),
+    )
+    replace_in_file(
+        destination / "scripts" / "dev.sh",
+        (
+            (
+                'DEFAULT_CONFIG_PATH="$ROOT_DIR/demo/config.dev.json"',
+                'DEFAULT_CONFIG_PATH="$ROOT_DIR/app/config.dev.json"',
+            ),
+            (
+                'LEGACY_CONFIG_PATH="$ROOT_DIR/app/config.dev.json"',
+                'LEGACY_CONFIG_PATH="$ROOT_DIR/demo/config.dev.json"',
+            ),
+            ('APP_SRC_DIR="$ROOT_DIR/demo/src"', 'APP_SRC_DIR="$ROOT_DIR/app/src"'),
+            (
+                'if [[ ! -d "$APP_SRC_DIR" && -d "$ROOT_DIR/app/src" ]]; then',
+                'if [[ ! -d "$APP_SRC_DIR" && -d "$ROOT_DIR/demo/src" ]]; then',
+            ),
+            ('  APP_SRC_DIR="$ROOT_DIR/app/src"', '  APP_SRC_DIR="$ROOT_DIR/demo/src"'),
+        ),
+    )
+    replace_in_file(
+        destination / "scripts" / "run_drogon_dev_once.sh",
+        (
+            (
+                'DEFAULT_CONFIG_PATH="$ROOT_DIR/demo/config.dev.json"',
+                'DEFAULT_CONFIG_PATH="$ROOT_DIR/app/config.dev.json"',
+            ),
+            (
+                'LEGACY_CONFIG_PATH="$ROOT_DIR/app/config.dev.json"',
+                'LEGACY_CONFIG_PATH="$ROOT_DIR/demo/config.dev.json"',
+            ),
+        ),
+    )
+    replace_in_file(
+        destination / "ui" / "vite.config.ts",
+        (
+            ('const demoConfig = resolve(__dirname, "../demo/config.json");', 'const appConfig = resolve(__dirname, "../app/config.json");'),
+            ('if (fs.existsSync(demoConfig)) {', 'if (fs.existsSync(appConfig)) {'),
+            ("return demoConfig;", "return appConfig;"),
+            ('return resolve(__dirname, "../app/config.json");', 'return resolve(__dirname, "../demo/config.json");'),
+        ),
+    )
+    replace_in_file(
+        destination / "app" / "src" / "main.cc",
+        (('std::string configPath = "demo/config.json";', 'std::string configPath = "app/config.json";'),),
+    )
+    replace_in_file(
+        destination / "app" / "src" / "controllers" / "Home.cc",
+        (
+            ("namespace demo::controllers", "namespace app::controllers"),
+            ("}  // namespace demo::controllers", "}  // namespace app::controllers"),
+        ),
+    )
+    files = (
+        destination / "README.md",
+        destination / "app" / "config.json",
+        destination / "app" / "config.dev.json",
+    )
+    for path in files:
+        replace_in_file(
+            path,
+            (
+                ("demo/config.dev.json", "app/config.dev.json"),
+                ("demo/config.json", "app/config.json"),
+            ),
+        )
+
+
 def ensure_cmake_configured(
     root: Path,
     build_dir: Path,
@@ -365,14 +892,62 @@ def ensure_cmake_configured(
 
     v8_include = os.environ.get("V8_INCLUDE_DIR", "").strip()
     v8_libs = os.environ.get("V8_LIBRARIES", "").strip()
-    if not cache_file.exists() and (not v8_include or not v8_libs):
-        raise ValueError(
-            "Build directory is not configured. Set V8_INCLUDE_DIR and V8_LIBRARIES, "
-            "or configure CMake once manually."
-        )
-
     build_dir.mkdir(parents=True, exist_ok=True)
     build_type = "Release" if mode == "prod" else "Debug"
+
+    toolchain = os.environ.get("CMAKE_TOOLCHAIN_FILE", "").strip()
+    conan_toolchain = build_dir / "conan_toolchain.cmake"
+    if not toolchain and conan_toolchain.exists():
+        toolchain = str(conan_toolchain)
+
+    has_conanfile = (root / "conanfile.py").exists()
+    if not toolchain and has_conanfile:
+        if shutil.which("conan"):
+            print(f"[hydra] Toolchain missing; running conan install ({build_type})...")
+            run_command(
+                [
+                    "conan",
+                    "install",
+                    ".",
+                    "--output-folder",
+                    str(build_dir),
+                    "--build=missing",
+                    "-s",
+                    f"build_type={build_type}",
+                ],
+                cwd=root,
+            )
+            if conan_toolchain.exists():
+                toolchain = str(conan_toolchain)
+        else:
+            print(
+                "[hydra] conan not found; trying plain CMake configure "
+                "(install conan or set CMAKE_TOOLCHAIN_FILE if configure fails)."
+            )
+
+    hydra_stack_dir = os.environ.get("HydraStack_DIR", "").strip()
+    if project_uses_external_engine(root) and not hydra_stack_dir:
+        candidates = find_hydrastack_config_candidates(root, parse_cmake_cache(cache_file))
+        valid = first_valid_hydrastack_config(candidates)
+        if valid is None:
+            install_prefix = bootstrap_hydrastack_engine_install(mode)
+            if install_prefix is not None:
+                bootstrapped_config = (
+                    install_prefix / "lib" / "cmake" / "HydraStack" / "HydraStackConfig.cmake"
+                )
+                if bootstrapped_config.exists() and bootstrapped_config.with_name(
+                    "HydraStackTargets.cmake"
+                ).exists():
+                    valid = bootstrapped_config
+        if valid is None:
+            raise ValueError(
+                "HydraStackConfig.cmake not found for external-engine app. "
+                "Install HydraStack engine and set CMAKE_PREFIX_PATH (or HydraStack_DIR) "
+                "before running hydra dev."
+            )
+        hydra_stack_dir = str(valid.parent)
+        print(f"[hydra] Using HydraStack package from {hydra_stack_dir}")
+
     cmake_cmd = [
         "cmake",
         "-S",
@@ -382,13 +957,16 @@ def ensure_cmake_configured(
         f"-DCMAKE_BUILD_TYPE={build_type}",
     ]
 
-    toolchain = os.environ.get("CMAKE_TOOLCHAIN_FILE", "").strip()
     if toolchain:
         cmake_cmd.append(f"-DCMAKE_TOOLCHAIN_FILE={toolchain}")
+    if hydra_stack_dir:
+        cmake_cmd.append(f"-DHydraStack_DIR={hydra_stack_dir}")
     if v8_include:
         cmake_cmd.append(f"-DV8_INCLUDE_DIR={v8_include}")
     if v8_libs:
         cmake_cmd.append(f"-DV8_LIBRARIES={v8_libs}")
+    if not project_uses_external_engine(root):
+        cmake_cmd.append("-DHYDRA_V8_AUTODETECT=ON")
 
     run_command(cmake_cmd, cwd=root)
 
@@ -410,8 +988,20 @@ def cmd_new(args: argparse.Namespace) -> int:
         destination.mkdir(parents=True, exist_ok=True)
 
     ignore_func = shutil.ignore_patterns(*SCAFFOLD_IGNORE_NAMES)
-    for directory in SCAFFOLD_DIRS:
+    scaffold_dirs: Sequence[str]
+    if args.external_engine:
+        scaffold_dirs = tuple(
+            directory for directory in SCAFFOLD_DIRS if directory not in {"engine", "scripts", "cmake"}
+        )
+    else:
+        scaffold_dirs = SCAFFOLD_DIRS
+
+    for directory in scaffold_dirs:
         source_dir = root / directory
+        if not source_dir.exists() and directory == "app":
+            legacy_demo_dir = root / "demo"
+            if legacy_demo_dir.exists():
+                source_dir = legacy_demo_dir
         target_dir = destination / directory
         if not source_dir.exists():
             continue
@@ -431,12 +1021,24 @@ def cmd_new(args: argparse.Namespace) -> int:
     if favicon.exists():
         shutil.copy2(favicon, public_dir / "favicon.ico")
 
-    hydra_path = destination / "hydra"
-    if hydra_path.exists():
-        hydra_path.chmod(0o755)
+    if args.external_engine:
+        write_external_engine_cmakelists(destination / "CMakeLists.txt")
+        patch_conanfile_for_external_engine(destination / "conanfile.py")
+        print("[new] mode: external-engine (HydraStack::hydra_engine)")
+
+    if (destination / "app").exists() and not (destination / "demo").exists():
+        normalize_generated_layout_to_app(destination)
+
+    write_app_readme(destination, args.external_engine)
+    if args.external_engine:
+        third_party_notices = destination / "THIRD_PARTY_NOTICES.md"
+        if third_party_notices.exists():
+            third_party_notices.unlink()
+    else:
+        write_third_party_notices(destination, root)
 
     print(f"[new] scaffold created at {destination}")
-    print(f"[new] next: cd {destination} && ./hydra dev")
+    print(f"[new] next: cd {destination} && hydra dev")
     return 0
 
 
@@ -445,16 +1047,21 @@ def cmd_dev(args: argparse.Namespace) -> int:
     mode = normalize_mode(args)
     build_dir, config_path = resolve_mode_paths(root, mode, args.build_dir, args.config)
 
-    dev_script = root / "scripts" / "dev.sh"
-    if not dev_script.exists():
-        raise ValueError(f"missing script: {dev_script}")
+    dev_script = resolve_dev_script(root)
     if not config_path.exists():
         raise ValueError(f"missing config file: {config_path}")
+
+    cache_file = build_dir / "CMakeCache.txt"
+    if not cache_file.exists():
+        print(f"[hydra] Build cache missing; configuring {build_dir} ...")
+    ensure_cmake_configured(root, build_dir, mode=mode, reconfigure=False)
+    validate_v8_for_runtime(root, build_dir)
 
     env = os.environ.copy()
     env["HYDRA_BUILD_DIR"] = str(build_dir)
     env["HYDRA_CONFIG_PATH"] = str(config_path)
-    run_command([str(dev_script)], cwd=root, env=env)
+    env["HYDRA_PROJECT_ROOT"] = str(root)
+    run_command(["bash", str(dev_script)], cwd=root, env=env)
     return 0
 
 
@@ -486,12 +1093,13 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     binary_path = build_dir / "hydra_demo"
     if not binary_path.exists():
-        suggested = "./hydra build --prod" if mode == "prod" else "./hydra build"
+        suggested = "hydra build --prod" if mode == "prod" else "hydra build"
         raise ValueError(
             f"binary not found: {binary_path}. Run '{suggested}' first."
         )
     if not config_path.exists():
         raise ValueError(f"missing config file: {config_path}")
+    validate_v8_for_runtime(root, build_dir)
 
     env = os.environ.copy()
     env["HYDRA_CONFIG"] = str(config_path)
@@ -548,7 +1156,26 @@ def build_parser() -> argparse.ArgumentParser:
         "--template-root",
         help="Template root for hydra new (defaults to bundled scaffold)",
     )
+    new_cmd.add_argument(
+        "--external-engine",
+        action="store_true",
+        help=(
+            "Do not copy engine/scripts; generated app links installed HydraStack::hydra_engine "
+            "and uses system hydra CLI"
+        ),
+    )
     new_cmd.set_defaults(func=cmd_new)
+
+    doctor_cmd = subparsers.add_parser(
+        "doctor",
+        help="Validate local HydraStack setup (external-engine visibility, V8 readiness, prefix sanity)",
+    )
+    add_mode_flags(doctor_cmd)
+    doctor_cmd.add_argument(
+        "--build-dir",
+        help="CMake build directory (defaults: build for dev, build-prod for prod)",
+    )
+    doctor_cmd.set_defaults(func=cmd_doctor)
 
     dev_cmd = subparsers.add_parser("dev", help="Run Vite + Drogon watcher stack")
     add_mode_flags(dev_cmd)
@@ -558,7 +1185,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     dev_cmd.add_argument(
         "--config",
-        help="Config file path (defaults: demo/config.dev.json for dev, demo/config.json for prod)",
+        help="Config file path (defaults: app/config.dev.json for dev, app/config.json for prod; demo/* also supported)",
     )
     dev_cmd.set_defaults(func=cmd_dev)
 
@@ -610,7 +1237,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_cmd.add_argument(
         "--config",
-        help="Config file path (defaults: demo/config.dev.json for dev, demo/config.json for prod)",
+        help="Config file path (defaults: app/config.dev.json for dev, app/config.json for prod; demo/* also supported)",
     )
     run_cmd.add_argument(
         "extra_args",

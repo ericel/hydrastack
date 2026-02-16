@@ -9,6 +9,12 @@
   "threads_num": 4,
   "run_as_daemon": false,
   "document_root": "./public",
+  "upload_path": "./uploads",
+  "hydra_uploads": {
+    "cleanup_on_startup": true,
+    "max_age_hours": 168,
+    "remove_empty_dirs": false
+  },
   "plugins": [
     {
       "name": "hydra::HydraSsrPlugin",

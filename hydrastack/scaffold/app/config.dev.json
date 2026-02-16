@@ -9,6 +9,12 @@
   "threads_num": 4,
   "run_as_daemon": false,
   "document_root": "./public",
+  "upload_path": "./uploads",
+  "hydra_uploads": {
+    "cleanup_on_startup": true,
+    "max_age_hours": 24,
+    "remove_empty_dirs": false
+  },
   "plugins": [
     {
       "name": "hydra::HydraSsrPlugin",
@@ -58,6 +64,7 @@
           "hmr_client_path": "/@vite/client",
           "proxy_timeout_sec": 10.0,
           "auto_reload": true,
+          "ansi_color_logs": true,
           "reload_probe_path": "/__hydra/test",
           "reload_interval_ms": 1000
         }

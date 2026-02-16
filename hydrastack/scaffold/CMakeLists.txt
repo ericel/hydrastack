@@ -33,9 +33,65 @@ else()
 endif()
 
 # v0.1 V8 discovery contract.
-# Supply these values explicitly via CMake flags.
-if(NOT V8_INCLUDE_DIR OR NOT V8_LIBRARIES)
-  message(FATAL_ERROR "V8 not configured. Provide -DV8_INCLUDE_DIR=... and -DV8_LIBRARIES=...")
+# Explicit -DV8_INCLUDE_DIR/-DV8_LIBRARIES wins.
+# If missing, we try env vars and common install locations.
+option(HYDRA_V8_AUTODETECT "Attempt to auto-detect local V8 install when V8_* is unset" ON)
+
+set(HYDRA_V8_HINT_ROOTS "")
+if(DEFINED ENV{V8_ROOT} AND NOT "$ENV{V8_ROOT}" STREQUAL "")
+  list(APPEND HYDRA_V8_HINT_ROOTS "$ENV{V8_ROOT}")
+endif()
+if(APPLE)
+  list(APPEND HYDRA_V8_HINT_ROOTS "/opt/homebrew/opt/v8" "/usr/local/opt/v8")
+endif()
+list(APPEND HYDRA_V8_HINT_ROOTS "/usr/local" "/usr")
+
+if(NOT V8_INCLUDE_DIR AND DEFINED ENV{V8_INCLUDE_DIR} AND NOT "$ENV{V8_INCLUDE_DIR}" STREQUAL "")
+  set(V8_INCLUDE_DIR "$ENV{V8_INCLUDE_DIR}" CACHE PATH "V8 include directory" FORCE)
+endif()
+if(NOT V8_LIBRARIES AND DEFINED ENV{V8_LIBRARIES} AND NOT "$ENV{V8_LIBRARIES}" STREQUAL "")
+  set(V8_LIBRARIES "$ENV{V8_LIBRARIES}" CACHE STRING "V8 libraries" FORCE)
+endif()
+
+if(HYDRA_V8_AUTODETECT AND (NOT V8_INCLUDE_DIR OR NOT V8_LIBRARIES))
+  if(NOT V8_INCLUDE_DIR)
+    find_path(HYDRA_V8_INCLUDE_CANDIDATE
+      NAMES v8.h
+      HINTS ${HYDRA_V8_HINT_ROOTS}
+      PATH_SUFFIXES include include/v8
+    )
+    if(HYDRA_V8_INCLUDE_CANDIDATE)
+      set(V8_INCLUDE_DIR "${HYDRA_V8_INCLUDE_CANDIDATE}" CACHE PATH "V8 include directory" FORCE)
+      message(STATUS "HydraStack auto-detected V8 include: ${V8_INCLUDE_DIR}")
+    endif()
+  endif()
+
+  if(NOT V8_LIBRARIES)
+    find_library(HYDRA_V8_MONOLITH_LIBRARY
+      NAMES v8_monolith
+      HINTS ${HYDRA_V8_HINT_ROOTS}
+      PATH_SUFFIXES lib lib64
+    )
+    if(HYDRA_V8_MONOLITH_LIBRARY)
+      set(V8_LIBRARIES "${HYDRA_V8_MONOLITH_LIBRARY}" CACHE STRING "V8 libraries" FORCE)
+      message(STATUS "HydraStack auto-detected V8 library: ${HYDRA_V8_MONOLITH_LIBRARY}")
+    else()
+      find_library(HYDRA_V8_LIBRARY
+        NAMES v8
+        HINTS ${HYDRA_V8_HINT_ROOTS}
+        PATH_SUFFIXES lib lib64
+      )
+      find_library(HYDRA_V8_LIBPLATFORM_LIBRARY
+        NAMES v8_libplatform
+        HINTS ${HYDRA_V8_HINT_ROOTS}
+        PATH_SUFFIXES lib lib64
+      )
+      if(HYDRA_V8_LIBRARY AND HYDRA_V8_LIBPLATFORM_LIBRARY)
+        set(V8_LIBRARIES "${HYDRA_V8_LIBRARY};${HYDRA_V8_LIBPLATFORM_LIBRARY}" CACHE STRING "V8 libraries" FORCE)
+        message(STATUS "HydraStack auto-detected V8 libraries: ${V8_LIBRARIES}")
+      endif()
+    endif()
+  endif()
 endif()
 
 if(V8_INCLUDE_DIR STREQUAL "...")
@@ -47,6 +103,12 @@ foreach(HYDRA_V8_LIB IN LISTS V8_LIBRARIES)
     message(FATAL_ERROR "V8_LIBRARIES contains placeholder '...'. Provide real V8 libraries.")
   endif()
 endforeach()
+
+if(NOT V8_INCLUDE_DIR OR NOT V8_LIBRARIES)
+  message(FATAL_ERROR
+    "V8 not configured. Provide -DV8_INCLUDE_DIR/-DV8_LIBRARIES, set V8_INCLUDE_DIR/V8_LIBRARIES env vars, "
+    "or install V8 in a standard path and keep HYDRA_V8_AUTODETECT=ON.")
+endif()
 
 add_library(hydra_engine
   engine/src/HydraSsrPlugin.cc
@@ -82,8 +144,8 @@ target_link_libraries(hydra_engine
 )
 
 add_executable(hydra_demo
-  demo/src/main.cc
-  demo/src/controllers/Home.cc
+  app/src/main.cc
+  app/src/controllers/Home.cc
 )
 
 target_link_libraries(hydra_demo

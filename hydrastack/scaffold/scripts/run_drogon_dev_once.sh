@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="${HYDRA_PROJECT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 BUILD_DIR="${HYDRA_BUILD_DIR:-$ROOT_DIR/build}"
-DEFAULT_CONFIG_PATH="$ROOT_DIR/demo/config.dev.json"
-LEGACY_CONFIG_PATH="$ROOT_DIR/app/config.dev.json"
+DEFAULT_CONFIG_PATH="$ROOT_DIR/app/config.dev.json"
+LEGACY_CONFIG_PATH="$ROOT_DIR/demo/config.dev.json"
 if [[ -n "${HYDRA_CONFIG_PATH:-}" ]]; then
   CONFIG_PATH="$HYDRA_CONFIG_PATH"
 elif [[ -f "$DEFAULT_CONFIG_PATH" ]]; then

@@ -461,7 +461,7 @@ int main(int argc, char *argv[]) {
         return path;
     };
 
-    std::string configPath = "demo/config.json";
+    std::string configPath = "app/config.json";
     if (const char *configFromEnv = std::getenv("HYDRA_CONFIG");
         configFromEnv != nullptr && *configFromEnv != '\0') {
         configPath = configFromEnv;

@@ -12,6 +12,10 @@ Rendering boundary (React-first):
 - C++ owns outer document shell + runtime policy (`HtmlShell` wrapping, CSP/security headers in `HydraSsrPlugin`).
 - No separate server-side HTML template engine is required for app pages.
 
+## Documentation
+
+- [Getting Started Walkthrough](docs/getting-started.md)
+
 ## v0.1 Scope
 
 - No Node runtime dependency in production.
@@ -53,6 +57,14 @@ For v0.1, V8 is provided externally (system install or prebuilt path). Configure
 - `-DV8_INCLUDE_DIR=/path/to/v8/include`
 - `-DV8_LIBRARIES="/path/to/libv8.a;/path/to/libv8_libplatform.a;..."`
 - optional: `-DV8_COMPILE_DEFINITIONS="V8_COMPRESS_POINTERS;V8_ENABLE_SANDBOX"` for V8 builds that require feature macros to match.
+
+HydraStack also supports best-effort auto-detection (`HYDRA_V8_AUTODETECT=ON` by default):
+
+- reads `V8_INCLUDE_DIR` / `V8_LIBRARIES` from environment if present
+- probes common roots (`/opt/homebrew/opt/v8`, `/usr/local/opt/v8`, `/usr/local`, `/usr`)
+- prefers `v8_monolith` when available, otherwise uses `v8 + v8_libplatform`
+
+In CI/release builds, explicit `-DV8_*` flags are still recommended for deterministic builds.
 
 On macOS with Homebrew V8 (`/opt/homebrew/opt/v8`), HydraStack auto-applies:
 
@@ -120,10 +132,14 @@ pip install -e .
 Then use the global command:
 
 - `hydra new <app>`: scaffold a new HydraStack app directory
+- `hydra new <app> --external-engine`: scaffold app only (no vendored `engine/`), link installed `HydraStack::hydra_engine`
+- `hydra doctor`: validate local setup (HydraStackConfig visibility, V8 readiness, prefix sanity)
 - `hydra dev`: run Vite + Drogon watcher stack (development mode by default)
 - `hydra build`: build UI bundles + C++ server
 - `hydra run`: run built `hydra_demo` with selected config
 - `hydra makemessages ...`, `hydra compilemessages ...`: i18n maintenance
+
+Scaffold layout defaults to `app/` for new projects. Existing `demo/` projects remain compatible.
 
 Mode flags:
 
@@ -136,12 +152,53 @@ Examples:
 hydra dev
 hydra dev --prod
 
+hydra new myapp --external-engine
+hydra doctor
+
 hydra build
 hydra build --prod
 
 hydra run
 hydra run --prod
 ```
+
+### External Engine App Workflow
+
+Use this for a professional dependency-based setup before publishing to Conan:
+
+1. Build and install HydraStack engine from source once:
+```bash
+cd hydrastack
+conan install . --output-folder=build-engine --build=missing -s build_type=Release
+cmake -S . -B build-engine \
+  -DCMAKE_TOOLCHAIN_FILE=build-engine/conan_toolchain.cmake \
+  -DHYDRA_BUILD_DEMO=OFF \
+  -DCMAKE_INSTALL_PREFIX=$HOME/.local/hydrastack
+cmake --build build-engine -j
+cmake --install build-engine
+```
+
+2. Scaffold a new app that links external engine:
+```bash
+hydra new myapp --external-engine
+cd myapp
+```
+
+3. Build app with installed HydraStack package visible to CMake:
+```bash
+export CMAKE_PREFIX_PATH="$HOME/.local/hydrastack:$CMAKE_PREFIX_PATH"
+conan install . --output-folder=build --build=missing -s build_type=Release
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake
+cmake --build build -j
+./build/hydra_demo app/config.dev.json
+```
+
+4. Validate environment before running:
+```bash
+hydra doctor
+```
+
+`hydra run` and `hydra dev` now fail fast when V8 readiness checks fail, so the app will not start with an invalid/missing V8 setup.
 
 `./hydra ...` still works in this repo as a local launcher.
 
@@ -187,6 +244,36 @@ Notes:
 - `main.cc` also supports `HYDRA_CONFIG` env var or a CLI arg:
   - `HYDRA_CONFIG=demo/config.dev.json ./build/hydra_demo`
   - `./build/hydra_demo demo/config.dev.json`
+
+### Upload Storage Policy
+
+HydraStack follows Drogon's upload-temp behavior:
+
+- `upload_path` (default `./uploads`) is Drogon's body/upload working root.
+- Drogon pre-creates `upload_path/tmp/00..FF` (256 fan-out directories) on startup. Seeing `tmp` with 256 items is expected.
+- Large request bodies are buffered into files under `upload_path/tmp/...` and normally auto-deleted by Drogon when request objects are released.
+
+HydraStack startup policy (`hydra_uploads`) is intentionally scoped to stale temp files under `upload_path/tmp`:
+
+- `cleanup_on_startup` (`true`/`false`)
+- `max_age_hours` (non-negative integer)
+- `remove_empty_dirs` (`true`/`false`, default `false`; keep Drogon fan-out dirs)
+
+Default retention in shipped configs:
+
+- dev config: `max_age_hours = 24`
+- prod config: `max_age_hours = 168` (7 days)
+
+Operational guidance:
+
+- Keep `upload_path` on a writable volume and exclude upload artifacts from source control.
+- In production, add periodic temp-file cleanup for long-lived processes (startup cleanup only runs on restart).
+
+Example periodic cleanup (daily, keep 7 days of temp cache files):
+
+```bash
+find ./uploads/tmp -type f -mtime +7 -delete
+```
 
 ### UI artifact build
 

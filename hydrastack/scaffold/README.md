@@ -30,6 +30,12 @@ For v0.1, V8 is provided externally (system install or prebuilt path). Configure
 - `-DV8_LIBRARIES="/path/to/libv8.a;/path/to/libv8_libplatform.a;..."`
 - optional: `-DV8_COMPILE_DEFINITIONS="V8_COMPRESS_POINTERS;V8_ENABLE_SANDBOX"` for V8 builds that require feature macros to match.
 
+HydraStack also supports best-effort auto-detection (`HYDRA_V8_AUTODETECT=ON` by default):
+
+- reads `V8_INCLUDE_DIR` / `V8_LIBRARIES` from environment if present
+- probes common roots (`/opt/homebrew/opt/v8`, `/usr/local/opt/v8`, `/usr/local`, `/usr`)
+- prefers `v8_monolith` when available, otherwise uses `v8 + v8_libplatform`
+
 On macOS with Homebrew V8 (`/opt/homebrew/opt/v8`), HydraStack auto-applies:
 
 - `V8_COMPRESS_POINTERS`
@@ -54,10 +60,14 @@ If you want CMake to trigger UI bundling, configure with `-DHYDRA_BUILD_UI=ON`.
 The `./hydra` command now includes project lifecycle commands in addition to i18n:
 
 - `./hydra new <app>`: scaffold a new HydraStack app directory
+- `./hydra new <app> --external-engine`: scaffold app only (no vendored `engine/`), link installed `HydraStack::hydra_engine`
+- `./hydra doctor`: validate local setup (HydraStackConfig visibility, V8 readiness, prefix sanity)
 - `./hydra dev`: run Vite + Drogon watcher stack (development mode by default)
 - `./hydra build`: build UI bundles + C++ server
 - `./hydra run`: run built `hydra_demo` with selected config
 - `./hydra makemessages ...`, `./hydra compilemessages ...`: i18n maintenance
+
+Scaffold layout defaults to `app/` for new projects. Existing `demo/` projects remain compatible.
 
 Mode flags:
 
@@ -70,12 +80,17 @@ Examples:
 ./hydra dev
 ./hydra dev --prod
 
+./hydra new myapp --external-engine
+./hydra doctor
+
 ./hydra build
 ./hydra build --prod
 
 ./hydra run
 ./hydra run --prod
 ```
+
+`./hydra run` and `./hydra dev` fail fast when V8 readiness checks fail, so the app does not start with an invalid/missing V8 setup.
 
 ## Dev Hot Reload
 
@@ -87,7 +102,7 @@ HydraStack now supports dev flow with:
 
 Files:
 
-- `demo/config.dev.json`: dev config with `dev_mode.enabled=true`.
+- `app/config.dev.json`: dev config with `dev_mode.enabled=true`.
 - `scripts/dev.sh`: starts Vite and watches C++ source changes.
 - `scripts/dev.sh`: starts Vite, SSR bundle watch, and watches C++ source changes.
 - `scripts/run_drogon_dev_once.sh`: build + run one Drogon instance.
@@ -110,8 +125,38 @@ Notes:
   - `HYDRA_APP_PORT=8070`
   - `HYDRA_VITE_PORT=5174`
 - `main.cc` also supports `HYDRA_CONFIG` env var or a CLI arg:
-  - `HYDRA_CONFIG=demo/config.dev.json ./build/hydra_demo`
-  - `./build/hydra_demo demo/config.dev.json`
+  - `HYDRA_CONFIG=app/config.dev.json ./build/hydra_demo`
+  - `./build/hydra_demo app/config.dev.json`
+
+### Upload Storage Policy
+
+HydraStack follows Drogon's upload-temp behavior:
+
+- `upload_path` (default `./uploads`) is Drogon's body/upload working root.
+- Drogon pre-creates `upload_path/tmp/00..FF` (256 fan-out directories) on startup. Seeing `tmp` with 256 items is expected.
+- Large request bodies are buffered into files under `upload_path/tmp/...` and normally auto-deleted by Drogon when request objects are released.
+
+HydraStack startup policy (`hydra_uploads`) is intentionally scoped to stale temp files under `upload_path/tmp`:
+
+- `cleanup_on_startup` (`true`/`false`)
+- `max_age_hours` (non-negative integer)
+- `remove_empty_dirs` (`true`/`false`, default `false`; keep Drogon fan-out dirs)
+
+Default retention in shipped configs:
+
+- dev config: `max_age_hours = 24`
+- prod config: `max_age_hours = 168` (7 days)
+
+Operational guidance:
+
+- Keep `upload_path` on a writable volume and exclude upload artifacts from source control.
+- In production, add periodic temp-file cleanup for long-lived processes (startup cleanup only runs on restart).
+
+Example periodic cleanup (daily, keep 7 days of temp cache files):
+
+```bash
+find ./uploads/tmp -type f -mtime +7 -delete
+```
 
 ### UI artifact build
 
@@ -143,7 +188,7 @@ ab -n 200 -c 20 http://127.0.0.1:8070/
 Contention and isolate-state proof checks:
 
 1. Start with serialized pool:
-   set `pool_size` to `1` in `demo/config.json`, run `./build/hydra_demo`, then:
+   set `pool_size` to `1` in `app/config.json`, run `./build/hydra_demo`, then:
 ```bash
 ab -k -n 5000 -c 200 "http://127.0.0.1:8070/?burn_ms=3"
 ```
@@ -159,7 +204,7 @@ With `pool_size=1`, the counter should increase monotonically between requests.
 ## Milestone 3 Notes (Manifest + Hashed Assets)
 
 HydraSsrPlugin can resolve CSS/JS from Vite's manifest automatically. You no longer need
-hardcoded `css_path` and `client_js_path` in `demo/config.json`.
+hardcoded `css_path` and `client_js_path` in `app/config.json`.
 
 Recommended plugin config:
 
@@ -191,7 +236,7 @@ Notes:
 HydraStack now supports a development mode where Drogon continues SSR in C++/V8 while
 frontend requests can be proxied to Vite.
 
-`demo/config.json` plugin keys:
+`app/config.json` plugin keys:
 
 - `asset_mode`: explicit asset pipeline mode.
   - `prod`: use manifest/static resolved assets (hashed output).
@@ -234,7 +279,7 @@ Build picks config from:
 
 1. `HYDRA_UI_CONFIG_PATH` (if set)
 2. `HYDRA_CONFIG_PATH` (if set)
-3. fallback `demo/config.json`
+3. fallback `app/config.json`
 
 SSR request context:
 

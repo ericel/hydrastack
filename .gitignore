@@ -8,3 +8,5 @@
 /ui/locales/**/LC_MESSAGES/*.mo
 *.egg-info/
 /.hydra/
+/uploads/*
+!/uploads/.gitkeep

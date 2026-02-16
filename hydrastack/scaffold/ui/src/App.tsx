@@ -14,6 +14,13 @@ function asString(value: unknown, fallback: string): string {
   return typeof value === "string" ? value : fallback;
 }
 
+function asObject(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null) {
+    return {};
+  }
+  return value as Record<string, unknown>;
+}
+
 function asNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -75,11 +82,23 @@ export default function App({ url, initialProps }: AppProps): JSX.Element {
       : {};
   const pageId = asString(routeContract.pageId, asString(initialProps.page, "home"));
   const routeParams = asStringRecord(routeContract.params);
+  const errorStatusCode = asNumber(initialProps.errorStatusCode ?? initialProps.error_status_code);
+  const errorReason = asString(initialProps.errorReason, asString(initialProps.error_reason, ""));
   const routeQuery = asStringRecord(routeContract.query);
   const postId = asString(routeParams.postId, asString(initialProps.postId, ""));
+  const post = asObject(initialProps.post);
+  const postTitle = asString(post.title, postId ? `Post ${postId}` : "");
+  const postSummary = asString(post.summary, "");
+  const postBody = asString(post.body, "");
+  const postAuthor = asString(post.author, "");
+  const postPublishedAt = asString(post.publishedAt, "");
+  const postTags = asStringArray(post.tags);
+  const postReadMinutes = asNumber(post.readMinutes);
+  const postLikes = asNumber(post.likes);
   const querySummary = Object.entries(routeQuery)
     .map(([key, value]) => `${key}=${value}`)
     .join(", ");
+  const isPostDetailPage = pageId === "post_detail";
   const requestLocale = asString(requestContext.locale, "en").toLowerCase();
   const requestTheme = normalizeTheme(asString(requestContext.theme, "ocean"));
   const [activeTheme, setActiveTheme] = React.useState<ThemeName>(requestTheme);
@@ -92,7 +111,14 @@ export default function App({ url, initialProps }: AppProps): JSX.Element {
     debugLocaleCandidates.length > 0 ? debugLocaleCandidates : i18n.localeCandidates;
   const messageKey = asString(initialProps.messageKey, asString(initialProps.message_key, ""));
   const messageFallback = asString(initialProps.message, "");
-  const message = messageKey ? gettext(messageKey) : messageFallback || _("hello_from_hydrastack");
+  const message =
+    pageId === "error_http"
+      ? (errorReason || (errorStatusCode !== null ? `HTTP ${errorStatusCode}` : "Request failed"))
+      : pageId === "not_found"
+      ? "Page not found"
+      : messageKey
+      ? gettext(messageKey)
+      : messageFallback || _("hello_from_hydrastack");
   const requestUrl = asString(requestContext.url, "");
   const bridgeStatus = asNumber(initialProps.__hydra_bridge_status);
   const bridgeBody = asString(initialProps.__hydra_bridge_body, "");
@@ -116,7 +142,29 @@ export default function App({ url, initialProps }: AppProps): JSX.Element {
           {gettext("route")}: {url}
         </p>
         <p className="mt-2 text-xs hydra-text-muted">{gettext("page_id")}: {pageId}</p>
+        {errorStatusCode !== null ? (
+          <p className="mt-1 text-xs hydra-text-muted">
+            HTTP status: {errorStatusCode}
+            {errorReason ? ` (${errorReason})` : ""}
+          </p>
+        ) : null}
         {postId ? <p className="mt-1 text-xs hydra-text-muted">{gettext("post_id")}: {postId}</p> : null}
+        {isPostDetailPage ? (
+          <article className="mt-4 rounded-xl border border-white/20 bg-black/10 p-4">
+            {postTitle ? <h2 className="text-xl font-semibold">{postTitle}</h2> : null}
+            {postSummary ? <p className="mt-2 text-sm hydra-text-muted">{postSummary}</p> : null}
+            {postBody ? <p className="mt-3 text-sm leading-6">{postBody}</p> : null}
+            <div className="mt-3 flex flex-wrap gap-3 text-xs hydra-text-muted">
+              {postAuthor ? <span>Author: {postAuthor}</span> : null}
+              {postPublishedAt ? <span>Published: {postPublishedAt}</span> : null}
+              {postReadMinutes !== null ? <span>Read: {postReadMinutes} min</span> : null}
+              {postLikes !== null ? <span>Likes: {postLikes}</span> : null}
+            </div>
+            {postTags.length > 0 ? (
+              <p className="mt-2 text-xs hydra-text-muted">Tags: {postTags.join(", ")}</p>
+            ) : null}
+          </article>
+        ) : null}
         {querySummary ? (
           <p className="mt-1 text-xs hydra-text-muted">{gettext("query_params")}: {querySummary}</p>
         ) : null}
@@ -133,6 +181,40 @@ export default function App({ url, initialProps }: AppProps): JSX.Element {
         >
           {gettext("toggle_theme")}
         </button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <a
+            className="rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button"
+            href="/posts/123"
+          >
+            Open post 123
+          </a>
+          <a
+            className="rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button"
+            href="/posts/456"
+          >
+            Open post 456
+          </a>
+          {isPostDetailPage ? (
+            <a
+              className="rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button"
+              href="/"
+            >
+              Back to home
+            </a>
+          ) : null}
+          <a
+            className="rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button"
+            href="/go-home"
+          >
+            Test redirect
+          </a>
+          <a
+            className="rounded-lg px-4 py-1 text-xs font-medium transition hydra-theme-button"
+            href="/not-found"
+          >
+            Test 404
+          </a>
+        </div>
         {localeCandidates.length > 0 ? (
           <p className="mt-1 text-xs hydra-text-muted">
             {gettext("locale_candidates")}: {localeCandidates.join(", ")}

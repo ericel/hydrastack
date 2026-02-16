@@ -32,11 +32,11 @@ function resolveHydraConfigPath(): string {
   if (envPath) {
     return resolve(__dirname, "..", envPath);
   }
-  const demoConfig = resolve(__dirname, "../demo/config.json");
-  if (fs.existsSync(demoConfig)) {
-    return demoConfig;
+  const appConfig = resolve(__dirname, "../app/config.json");
+  if (fs.existsSync(appConfig)) {
+    return appConfig;
   }
-  return resolve(__dirname, "../app/config.json");
+  return resolve(__dirname, "../demo/config.json");
 }
 
 function readHydraPluginConfig(): HydraPluginConfig {

@@ -43,6 +43,7 @@ struct HydraSsrPluginConfig {
     bool devAutoReloadEnabled = false;
     std::string devReloadProbePath = "/__hydra/test";
     std::uint64_t devReloadIntervalMs = 1000;
+    bool devAnsiColorLogs = false;
 
     std::vector<std::string> warnings;
 };

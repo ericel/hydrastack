@@ -120,6 +120,8 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
     bool devModeEnabled_ = false;
     bool devProxyAssetsEnabled_ = false;
     bool devInjectHmrClient_ = false;
+    bool devAnsiColorLogs_ = false;
+    bool ansiColorLogsActive_ = false;
     std::string devProxyOrigin_ = "http://127.0.0.1:5174";
     std::string devClientEntryPath_ = "/src/entry-client.tsx";
     std::string devHmrClientPath_ = "/@vite/client";

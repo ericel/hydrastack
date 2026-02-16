@@ -59,6 +59,7 @@
           "hmr_client_path": "/@vite/client",
           "proxy_timeout_sec": 10.0,
           "auto_reload": true,
+          "ansi_color_logs": true,
           "reload_probe_path": "/__hydra/test",
           "reload_interval_ms": 1000
         }

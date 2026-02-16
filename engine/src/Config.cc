@@ -185,6 +185,7 @@ HydraSsrPluginConfig validateAndNormalizeHydraSsrPluginConfig(const Json::Value 
             "reload_interval_ms",
             "asset_mode",
             "log_request_routes",
+            "ansi_color_logs",
         };
         for (const auto &key : devModeConfig->getMemberNames()) {
             if (knownDevKeys.find(key) == knownDevKeys.end()) {
@@ -259,6 +260,9 @@ HydraSsrPluginConfig validateAndNormalizeHydraSsrPluginConfig(const Json::Value 
     normalized.devReloadIntervalMs =
         readNestedUInt64(devModeConfig, config, "reload_interval_ms", "dev_reload_interval_ms",
                          normalized.devReloadIntervalMs);
+    normalized.devAnsiColorLogs =
+        readNestedBool(
+            devModeConfig, config, "ansi_color_logs", "dev_ansi_color_logs", false);
 
     if (normalized.acquireTimeoutMs > kMaxAcquireTimeoutMs) {
         throw std::runtime_error("HydraSsrPlugin config 'acquire_timeout_ms' is too large");
@@ -316,6 +320,7 @@ std::string summarizeHydraSsrPluginConfig(const HydraSsrPluginConfig &config) {
         << " | dev{enabled=" << (config.devModeEnabled ? "on" : "off")
         << ", origin=" << config.devProxyOrigin
         << ", proxy_assets=" << (config.devProxyAssetsEnabled ? "on" : "off")
+        << ", ansi_color_logs=" << (config.devAnsiColorLogs ? "on" : "off")
         << "}";
     return out.str();
 }

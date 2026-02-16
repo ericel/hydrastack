@@ -314,6 +314,7 @@ frontend requests can be proxied to Vite.
 - `dev_mode.css_path`: dev stylesheet path (default `/src/styles.css`).
 - `dev_mode.inject_hmr_client`: inject `@vite/client` into HTML shell.
 - `dev_mode.client_entry_path`: module entry used for client hydration in dev.
+- `dev_mode.ansi_color_logs`: enable ANSI-colored Hydra startup logs in dev (TTY only).
 - `api_bridge_enabled`: enable `globalThis.hydra.fetch(...)` bridge in SSR runtime.
 
 Asset mode precedence:

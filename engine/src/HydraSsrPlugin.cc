@@ -1,6 +1,7 @@
 #include "hydra/HydraSsrPlugin.h"
 
 #include "hydra/HtmlShell.h"
+#include "hydra/LogFmt.h"
 #include "hydra/V8IsolatePool.h"
 #include "hydra/V8Platform.h"
 
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <fstream>
 #include <optional>
 #include <random>
@@ -18,6 +20,12 @@
 #include <stdexcept>
 #include <string_view>
 #include <utility>
+
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace hydra {
 namespace {
@@ -50,6 +58,32 @@ std::string trimAsciiWhitespace(std::string value) {
 
 const char *onOff(bool value) {
     return value ? "on" : "off";
+}
+
+bool isConsoleTty() {
+#ifdef _WIN32
+    const auto stdoutTty = ::_isatty(_fileno(stdout)) != 0;
+    const auto stderrTty = ::_isatty(_fileno(stderr)) != 0;
+#else
+    const auto stdoutTty = ::isatty(fileno(stdout)) != 0;
+    const auto stderrTty = ::isatty(fileno(stderr)) != 0;
+#endif
+    return stdoutTty || stderrTty;
+}
+
+std::string maybeColorizeLog(const std::string &line, const char *ansiCode, bool enabled) {
+    if (!enabled || ansiCode == nullptr || *ansiCode == '\0') {
+        return line;
+    }
+
+    std::string out;
+    out.reserve(line.size() + 16);
+    out.append("\x1b[");
+    out.append(ansiCode);
+    out.append("m");
+    out.append(line);
+    out.append("\x1b[0m");
+    return out;
 }
 
 std::string firstHeaderToken(const std::string &value) {
@@ -1028,6 +1062,8 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
     devModeEnabled_ = normalizedConfig_.devModeEnabled;
     devProxyAssetsEnabled_ = normalizedConfig_.devProxyAssetsEnabled;
     devInjectHmrClient_ = normalizedConfig_.devInjectHmrClient;
+    devAnsiColorLogs_ = normalizedConfig_.devAnsiColorLogs;
+    ansiColorLogsActive_ = devModeEnabled_ && devAnsiColorLogs_ && isConsoleTty();
     devProxyOrigin_ = normalizedConfig_.devProxyOrigin;
     devClientEntryPath_ = normalizedConfig_.devClientEntryPath;
     devHmrClientPath_ = normalizedConfig_.devHmrClientPath;
@@ -1363,16 +1399,40 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
         throw;
     }
 
-    LOG_INFO << "HydraInit"
-             << " | " << summarizeHydraSsrPluginConfig(normalizedConfig_)
-             << " | runtime{pool=" << isolatePoolSize_ << "}"
-             << " | flags{dev=" << onOff(devModeEnabled_)
-             << ", api_bridge=" << onOff(apiBridgeEnabled_)
-             << ", include_cookies=" << onOff(requestContextIncludeCookies_)
-             << ", include_cookie_map=" << onOff(requestContextIncludeCookieMap_)
-             << ", request_routes=" << onOff(logRequestRoutes_)
-             << "} | defaults{locale=" << i18nDefaultLocale_
-             << ", theme=" << themeDefault_ << "}";
+    if (devModeEnabled_) {
+        auto line = logfmt::Line("HydraInit")
+                        .block(summarizeHydraSsrPluginConfig(normalizedConfig_))
+                        .group("runtime", {{"pool", std::to_string(isolatePoolSize_)}})
+                        .group("flags",
+                               {{"dev", logfmt::onOff(devModeEnabled_)},
+                                {"api_bridge", logfmt::onOff(apiBridgeEnabled_)},
+                                {"include_cookies", logfmt::onOff(requestContextIncludeCookies_)},
+                                {"include_cookie_map",
+                                 logfmt::onOff(requestContextIncludeCookieMap_)},
+                                {"request_routes", logfmt::onOff(logRequestRoutes_)}})
+                        .group("defaults",
+                               {{"locale", i18nDefaultLocale_}, {"theme", themeDefault_}});
+        LOG_INFO << maybeColorizeLog(line.str(), "1;36", ansiColorLogsActive_);
+    } else {
+        auto infoLine = logfmt::Line("HydraInit")
+                            .block(summarizeHydraSsrPluginConfig(normalizedConfig_))
+                            .group("runtime", {{"pool", std::to_string(isolatePoolSize_)}})
+                            .group("flags",
+                                   {{"dev", logfmt::onOff(devModeEnabled_)},
+                                    {"api_bridge", logfmt::onOff(apiBridgeEnabled_)},
+                                    {"request_routes", logfmt::onOff(logRequestRoutes_)}})
+                            .group("defaults",
+                                   {{"locale", i18nDefaultLocale_}, {"theme", themeDefault_}});
+        LOG_INFO << maybeColorizeLog(infoLine.str(), "1;36", ansiColorLogsActive_);
+
+        auto debugLine = logfmt::Line("HydraInit detail")
+                             .group("flags",
+                                    {{"include_cookies",
+                                      logfmt::onOff(requestContextIncludeCookies_)},
+                                     {"include_cookie_map",
+                                      logfmt::onOff(requestContextIncludeCookieMap_)}});
+        LOG_DEBUG << maybeColorizeLog(debugLine.str(), "2;37", ansiColorLogsActive_);
+    }
 }
 
 void HydraSsrPlugin::setApiBridgeHandler(ApiBridgeHandler handler) {

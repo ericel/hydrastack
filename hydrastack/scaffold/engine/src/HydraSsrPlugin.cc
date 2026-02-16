@@ -343,6 +343,25 @@ bool parseJsonObject(const std::string &json, Json::Value *out) {
     return out->isObject();
 }
 
+bool extractHtmlFromRenderEnvelope(const std::string &rawRenderOutput,
+                                   std::string *htmlOut) {
+    if (htmlOut == nullptr) {
+        return false;
+    }
+
+    Json::Value envelope;
+    if (!parseJsonObject(rawRenderOutput, &envelope)) {
+        return false;
+    }
+
+    if (!envelope.isMember("html") || !envelope["html"].isString()) {
+        return false;
+    }
+
+    *htmlOut = envelope["html"].asString();
+    return true;
+}
+
 bool isLikelyFullDocument(const std::string &html) {
     return html.find("<html") != std::string::npos ||
            html.find("<!doctype") != std::string::npos ||
@@ -1318,6 +1337,10 @@ std::string HydraSsrPlugin::render(const drogon::HttpRequestPtr &req,
                 std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now() - renderStartedAt)
                     .count());
+            std::string envelopeHtml;
+            if (extractHtmlFromRenderEnvelope(html, &envelopeHtml)) {
+                html = std::move(envelopeHtml);
+            }
             const auto renderIndex =
                 renderCount_.fetch_add(1, std::memory_order_relaxed) + 1;
             std::uint64_t wrapMs = 0;

@@ -400,17 +400,10 @@ void installHydraErrorHandler() {
             }
 
             try {
-                auto rendered = hydra->renderResult(req, buildErrorProps(status, req));
-
                 auto response = drogon::HttpResponse::newHttpResponse();
-                const auto responseStatus = std::clamp(rendered.status, 100, 599);
-                response->setStatusCode(
-                    static_cast<drogon::HttpStatusCode>(responseStatus));
+                response->setStatusCode(status);
                 response->setContentTypeCode(drogon::CT_TEXT_HTML);
-                response->setBody(rendered.html);
-                for (const auto &[headerName, headerValue] : rendered.headers) {
-                    response->addHeader(headerName, headerValue);
-                }
+                response->setBody(hydra->render(req, buildErrorProps(status, req)));
                 return response;
             } catch (...) {
                 return fallback;

@@ -221,11 +221,10 @@ class Home final : public drogon::HttpController<Home> {
 
     void metrics(const drogon::HttpRequestPtr &,
                  HttpCallback &&callback) const {
-        auto hydra = drogon::app().getPlugin<hydra::HydraSsrPlugin>();
         auto response = drogon::HttpResponse::newHttpResponse();
-        response->setStatusCode(drogon::k200OK);
-        response->setContentTypeString("text/plain; version=0.0.4; charset=utf-8");
-        response->setBody(hydra->metricsPrometheus());
+        response->setStatusCode(drogon::k501NotImplemented);
+        response->setContentTypeString("text/plain; charset=utf-8");
+        response->setBody("# Hydra metrics API is unavailable in this build\n");
         callback(response);
     }
 
@@ -234,16 +233,12 @@ class Home final : public drogon::HttpController<Home> {
                     HttpCallback &&callback,
                     Json::Value props) const {
         auto hydra = drogon::app().getPlugin<hydra::HydraSsrPlugin>();
-        const auto rendered = hydra->renderResult(req, props);
+        const auto html = hydra->render(req, props);
 
         auto response = drogon::HttpResponse::newHttpResponse();
-        const auto normalizedStatus = std::clamp(rendered.status, 100, 599);
-        response->setStatusCode(static_cast<drogon::HttpStatusCode>(normalizedStatus));
+        response->setStatusCode(drogon::k200OK);
         response->setContentTypeCode(drogon::CT_TEXT_HTML);
-        response->setBody(rendered.html);
-        for (const auto &[headerName, headerValue] : rendered.headers) {
-            response->addHeader(headerName, headerValue);
-        }
+        response->setBody(html);
         callback(response);
     }
 };

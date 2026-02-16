@@ -11,6 +11,7 @@ Install these first:
 - C++20 compiler (`clang`/`gcc`; on macOS, Xcode Command Line Tools)
 - `python >= 3.10`
 - `pip`
+- `pipx` (optional, for isolated CLI install)
 - `node >= 18` and `npm`
 - `conan >= 2`
 - V8 headers/libs (or Homebrew V8 on macOS)
@@ -34,13 +35,30 @@ On macOS (Homebrew):
 brew install v8
 ```
 
-## 1) Clone And Install CLI
+## 1) Install Hydra CLI
+
+Choose one installation path:
+
+### Option A: Editable install from source (best for HydraStack development)
 
 ```bash
 git clone <your-hydrastack-repo-url> hydrastack
 cd hydrastack
 pip install -e .
 hydra --help
+```
+
+### Option B: Global install with pipx (best for using Hydra CLI as a tool)
+
+```bash
+pipx install "git+https://github.com/ericel/hydrastack.git@main"
+hydra --help
+```
+
+To refresh to the latest `main` when the package version has not changed:
+
+```bash
+pipx install --force --pip-args='--no-cache-dir' "git+https://github.com/ericel/hydrastack.git@main"
 ```
 
 ## 2) Run HydraStack Demo (Repo Workflow)

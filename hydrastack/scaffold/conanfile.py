@@ -11,7 +11,7 @@ class HydraStackConan(ConanFile):
         "README.md",
         "LICENSE",
         "engine/*",
-        "app/*",
+        "demo/*",
         "cmake/*",
         "ui/*",
         "public/*",

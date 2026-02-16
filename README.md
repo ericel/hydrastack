@@ -44,7 +44,7 @@ Conan manages Drogon and JSON:
 Conan recipe intent:
 
 - `conanfile.py` packages the engine boundary (`hydra_engine`) only.
-- Demo/template sources (`app/`, `ui/`) are intentionally excluded from package exports.
+- Demo/template sources (`demo/`, `ui/`) are intentionally excluded from package exports.
 
 ### V8 dependency
 
@@ -90,7 +90,7 @@ HydraStack is structured as a monorepo that is ready for a future engine/templat
 Package boundary:
 
 - `engine/` and `cmake/` are the stable C++ package surface.
-- `app/`, `ui/`, and most `scripts/` are demo/template workflow.
+- `demo/`, `ui/`, and most `scripts/` are demo/template workflow.
 
 What this means today:
 
@@ -155,7 +155,7 @@ HydraStack now supports dev flow with:
 
 Files:
 
-- `app/config.dev.json`: dev config with `dev_mode.enabled=true`.
+- `demo/config.dev.json`: dev config with `dev_mode.enabled=true`.
 - `scripts/dev.sh`: starts Vite and watches C++ source changes.
 - `scripts/dev.sh`: starts Vite, SSR bundle watch, and watches C++ source changes.
 - `scripts/run_drogon_dev_once.sh`: build + run one Drogon instance.
@@ -185,8 +185,8 @@ Notes:
   - builds SSR + client bundles once at startup
   - watches both SSR and client builds so manifest/hash changes are refreshed
 - `main.cc` also supports `HYDRA_CONFIG` env var or a CLI arg:
-  - `HYDRA_CONFIG=app/config.dev.json ./build/hydra_demo`
-  - `./build/hydra_demo app/config.dev.json`
+  - `HYDRA_CONFIG=demo/config.dev.json ./build/hydra_demo`
+  - `./build/hydra_demo demo/config.dev.json`
 
 ### UI artifact build
 
@@ -218,7 +218,7 @@ ab -n 200 -c 20 http://127.0.0.1:8070/
 Contention and isolate-state proof checks:
 
 1. Start with serialized pool:
-   set `pool_size` to `1` in `app/config.json`, run `./build/hydra_demo`, then:
+   set `pool_size` to `1` in `demo/config.json`, run `./build/hydra_demo`, then:
 ```bash
 ab -k -n 5000 -c 200 "http://127.0.0.1:8070/?burn_ms=3"
 ```
@@ -270,7 +270,7 @@ To protect timeout tests from acquire-timeout interference:
 ## Milestone 3 Notes (Manifest + Hashed Assets)
 
 HydraSsrPlugin can resolve CSS/JS from Vite's manifest automatically. You no longer need
-hardcoded `css_path` and `client_js_path` in `app/config.json`.
+hardcoded `css_path` and `client_js_path` in `demo/config.json`.
 
 Recommended plugin config:
 
@@ -302,7 +302,7 @@ Notes:
 HydraStack now supports a development mode where Drogon continues SSR in C++/V8 while
 frontend requests can be proxied to Vite.
 
-`app/config.json` plugin keys:
+`demo/config.json` plugin keys:
 
 - `asset_mode`: explicit asset pipeline mode.
   - `prod`: use manifest/static resolved assets (hashed output).
@@ -346,7 +346,7 @@ Build picks config from:
 
 1. `HYDRA_UI_CONFIG_PATH` (if set)
 2. `HYDRA_CONFIG_PATH` (if set)
-3. fallback `app/config.json`
+3. fallback `demo/config.json`
 
 SSR request context:
 

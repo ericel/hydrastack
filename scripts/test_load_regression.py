@@ -132,7 +132,7 @@ def main() -> int:
         "--config",
         type=Path,
         default=None,
-        help="source config template path (default: app/config.dev.json)",
+        help="source config template path (default: demo/config.dev.json)",
     )
     parser.add_argument("--port", type=int, default=int(os.environ.get("HYDRA_LOAD_TEST_PORT", "18071")))
     parser.add_argument("--requests", type=int, default=1000)
@@ -145,7 +145,10 @@ def main() -> int:
 
     root = args.root.resolve()
     binary = (args.binary or (root / "build" / "hydra_demo")).resolve()
-    config_template = (args.config or (root / "app" / "config.dev.json")).resolve()
+    default_config = root / "demo" / "config.dev.json"
+    if not default_config.exists():
+        default_config = root / "app" / "config.dev.json"
+    config_template = (args.config or default_config).resolve()
 
     ab_binary = args.ab or shutil.which("ab")
     if not ab_binary:

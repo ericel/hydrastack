@@ -4,11 +4,23 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UI_DIR="$ROOT_DIR/ui"
 BUILD_DIR="${HYDRA_BUILD_DIR:-$ROOT_DIR/build}"
-CONFIG_PATH="${HYDRA_CONFIG_PATH:-$ROOT_DIR/app/config.dev.json}"
+DEFAULT_CONFIG_PATH="$ROOT_DIR/demo/config.dev.json"
+LEGACY_CONFIG_PATH="$ROOT_DIR/app/config.dev.json"
+if [[ -n "${HYDRA_CONFIG_PATH:-}" ]]; then
+  CONFIG_PATH="$HYDRA_CONFIG_PATH"
+elif [[ -f "$DEFAULT_CONFIG_PATH" ]]; then
+  CONFIG_PATH="$DEFAULT_CONFIG_PATH"
+else
+  CONFIG_PATH="$LEGACY_CONFIG_PATH"
+fi
 RUN_ONCE_SCRIPT="$ROOT_DIR/scripts/run_drogon_dev_once.sh"
 DEV_VERBOSE="${HYDRA_DEV_VERBOSE:-0}"
 DEV_LOG_DIR="${HYDRA_DEV_LOG_DIR:-$ROOT_DIR/.hydra/logs}"
 VITE_LOG_FILE="${HYDRA_VITE_LOG_FILE:-$DEV_LOG_DIR/vite-dev.log}"
+APP_SRC_DIR="$ROOT_DIR/demo/src"
+if [[ ! -d "$APP_SRC_DIR" && -d "$ROOT_DIR/app/src" ]]; then
+  APP_SRC_DIR="$ROOT_DIR/app/src"
+fi
 
 if [[ ! -f "$CONFIG_PATH" ]]; then
   echo "Missing config file at $CONFIG_PATH" >&2
@@ -256,7 +268,7 @@ if command -v watchexec >/dev/null 2>&1; then
     watchexec \
       --restart \
       --signal SIGTERM \
-      --watch "$ROOT_DIR/app/src" \
+      --watch "$APP_SRC_DIR" \
       --watch "$ROOT_DIR/engine/src" \
       --watch "$ROOT_DIR/engine/include" \
       --watch "$CONFIG_PATH" \
@@ -270,7 +282,7 @@ elif command -v fswatch >/dev/null 2>&1; then
     drogon_pid=$!
 
     fswatch -1 \
-      "$ROOT_DIR/app/src" \
+      "$APP_SRC_DIR" \
       "$ROOT_DIR/engine/src" \
       "$ROOT_DIR/engine/include" \
       "$CONFIG_PATH" \

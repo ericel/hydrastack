@@ -18,7 +18,7 @@ SOURCE_EXTENSIONS = {".ts", ".tsx", ".js", ".jsx"}
 TRANSLATION_CALL_PATTERN = re.compile(
     r"\b(?:gettext|_)\(\s*(?P<quote>['\"])(?P<msgid>(?:\\.|(?!\1).)*)\1\s*\)"
 )
-SCAFFOLD_DIRS = ("app", "cmake", "engine", "scripts", "ui")
+SCAFFOLD_DIRS = ("demo", "cmake", "engine", "scripts", "ui")
 SCAFFOLD_FILES = ("CMakeLists.txt", "conanfile.py", "README.md", "LICENSE", ".gitignore", "hydra")
 SCAFFOLD_IGNORE_NAMES = {
     ".git",
@@ -31,12 +31,16 @@ SCAFFOLD_IGNORE_NAMES = {
 
 
 def resolve_template_root(template_root_arg: str | None) -> Path:
+    def is_valid_template_root(path: Path) -> bool:
+        has_demo_or_app = (path / "demo").exists() or (path / "app").exists()
+        return has_demo_or_app and (path / "engine").exists()
+
     if template_root_arg:
         candidate = Path(template_root_arg).expanduser()
         if not candidate.is_absolute():
             candidate = Path.cwd() / candidate
         candidate = candidate.resolve()
-        if not (candidate / "app").exists() or not (candidate / "engine").exists():
+        if not is_valid_template_root(candidate):
             raise ValueError(f"invalid template root: {candidate}")
         return candidate
 
@@ -49,7 +53,7 @@ def resolve_template_root(template_root_arg: str | None) -> Path:
     for candidate in candidates:
         if not candidate.exists():
             continue
-        if (candidate / "app").exists() and (candidate / "engine").exists():
+        if is_valid_template_root(candidate):
             return candidate
 
     raise ValueError(
@@ -322,6 +326,13 @@ def resolve_mode_paths(
     build_dir_arg: str | None,
     config_arg: str | None,
 ) -> Tuple[Path, Path]:
+    def default_config_for_mode() -> Path:
+        preferred = root / ("demo/config.json" if mode == "prod" else "demo/config.dev.json")
+        legacy = root / ("app/config.json" if mode == "prod" else "app/config.dev.json")
+        if preferred.exists() or not legacy.exists():
+            return preferred
+        return legacy
+
     default_build_dir = root / ("build-prod" if mode == "prod" else "build")
     if build_dir_arg:
         build_dir = Path(build_dir_arg)
@@ -330,7 +341,7 @@ def resolve_mode_paths(
     else:
         build_dir = default_build_dir
 
-    default_config = root / ("app/config.json" if mode == "prod" else "app/config.dev.json")
+    default_config = default_config_for_mode()
     if config_arg:
         config_path = Path(config_arg)
         if not config_path.is_absolute():
@@ -547,7 +558,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     dev_cmd.add_argument(
         "--config",
-        help="Config file path (defaults: app/config.dev.json for dev, app/config.json for prod)",
+        help="Config file path (defaults: demo/config.dev.json for dev, demo/config.json for prod)",
     )
     dev_cmd.set_defaults(func=cmd_dev)
 
@@ -599,7 +610,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_cmd.add_argument(
         "--config",
-        help="Config file path (defaults: app/config.dev.json for dev, app/config.json for prod)",
+        help="Config file path (defaults: demo/config.dev.json for dev, demo/config.json for prod)",
     )
     run_cmd.add_argument(
         "extra_args",

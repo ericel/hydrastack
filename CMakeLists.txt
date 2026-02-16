@@ -92,8 +92,8 @@ target_link_libraries(hydra_engine
 
 if(HYDRA_BUILD_DEMO)
   add_executable(hydra_demo
-    app/src/main.cc
-    app/src/controllers/Home.cc
+    demo/src/main.cc
+    demo/src/controllers/Home.cc
   )
 
   target_link_libraries(hydra_demo

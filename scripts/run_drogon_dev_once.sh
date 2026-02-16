@@ -3,7 +3,15 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${HYDRA_BUILD_DIR:-$ROOT_DIR/build}"
-CONFIG_PATH="${HYDRA_CONFIG_PATH:-$ROOT_DIR/app/config.dev.json}"
+DEFAULT_CONFIG_PATH="$ROOT_DIR/demo/config.dev.json"
+LEGACY_CONFIG_PATH="$ROOT_DIR/app/config.dev.json"
+if [[ -n "${HYDRA_CONFIG_PATH:-}" ]]; then
+  CONFIG_PATH="$HYDRA_CONFIG_PATH"
+elif [[ -f "$DEFAULT_CONFIG_PATH" ]]; then
+  CONFIG_PATH="$DEFAULT_CONFIG_PATH"
+else
+  CONFIG_PATH="$LEGACY_CONFIG_PATH"
+fi
 
 if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
   echo "Build directory is not configured: $BUILD_DIR" >&2

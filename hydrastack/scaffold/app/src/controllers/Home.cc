@@ -214,7 +214,7 @@ class Home final : public drogon::HttpController<Home> {
         payload["query"] = req->query();
         payload["process_started_ms"] = static_cast<Json::Int64>(kProcessStartedMs);
         payload["tip"] =
-            "C++ hot reload: working scripts/dev.sh; Vite HMR: edits under ui/src/*";
+            "C++ hot reload: run hydra dev; Vite HMR: edits under ui/src/*";
 
         callback(drogon::HttpResponse::newHttpJsonResponse(payload));
     }

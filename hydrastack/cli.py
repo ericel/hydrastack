@@ -18,7 +18,7 @@ SOURCE_EXTENSIONS = {".ts", ".tsx", ".js", ".jsx"}
 TRANSLATION_CALL_PATTERN = re.compile(
     r"\b(?:gettext|_)\(\s*(?P<quote>['\"])(?P<msgid>(?:\\.|(?!\1).)*)\1\s*\)"
 )
-SCAFFOLD_DIRS = ("app", "cmake", "engine", "scripts", "ui")
+SCAFFOLD_DIRS = ("app", "cmake", "engine", "ui")
 SCAFFOLD_FILES = ("CMakeLists.txt", "conanfile.py", ".gitignore")
 SCAFFOLD_IGNORE_NAMES = {
     ".git",
@@ -991,7 +991,7 @@ def cmd_new(args: argparse.Namespace) -> int:
     scaffold_dirs: Sequence[str]
     if args.external_engine:
         scaffold_dirs = tuple(
-            directory for directory in SCAFFOLD_DIRS if directory not in {"engine", "scripts", "cmake"}
+            directory for directory in SCAFFOLD_DIRS if directory not in {"engine", "cmake"}
         )
     else:
         scaffold_dirs = SCAFFOLD_DIRS
@@ -1160,7 +1160,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--external-engine",
         action="store_true",
         help=(
-            "Do not copy engine/scripts; generated app links installed HydraStack::hydra_engine "
+            "Do not copy engine/cmake; generated app links installed HydraStack::hydra_engine "
             "and uses system hydra CLI"
         ),
     )

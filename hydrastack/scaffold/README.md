@@ -59,8 +59,8 @@ If you want CMake to trigger UI bundling, configure with `-DHYDRA_BUILD_UI=ON`.
 
 The `./hydra` command now includes project lifecycle commands in addition to i18n:
 
-- `./hydra new <app>`: scaffold a new HydraStack app directory
-- `./hydra new <app> --external-engine`: scaffold app only (no vendored `engine/`), link installed `HydraStack::hydra_engine`
+- `./hydra new <app>`: scaffold app-only layout (default, no vendored `engine/`), link installed `HydraStack::hydra_engine`
+- `./hydra new <app> --vendored-engine`: scaffold with vendored `engine/` and `cmake/` (legacy behavior)
 - `./hydra doctor`: validate local setup (HydraStackConfig visibility, V8 readiness, prefix sanity)
 - `./hydra dev`: run Vite + Drogon watcher stack (development mode by default)
 - `./hydra build`: build UI bundles + C++ server
@@ -80,7 +80,7 @@ Examples:
 ./hydra dev
 ./hydra dev --prod
 
-./hydra new myapp --external-engine
+./hydra new myapp
 ./hydra doctor
 
 ./hydra build

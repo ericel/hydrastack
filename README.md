@@ -131,8 +131,8 @@ pip install -e .
 
 Then use the global command:
 
-- `hydra new <app>`: scaffold a new HydraStack app directory
-- `hydra new <app> --external-engine`: scaffold app only (no vendored `engine/`), link installed `HydraStack::hydra_engine`
+- `hydra new <app>`: scaffold app-only layout (default, no vendored `engine/`), link installed `HydraStack::hydra_engine`
+- `hydra new <app> --vendored-engine`: scaffold with vendored `engine/` and `cmake/` (legacy behavior)
 - `hydra doctor`: validate local setup (HydraStackConfig visibility, V8 readiness, prefix sanity)
 - `hydra dev`: run Vite + Drogon watcher stack (development mode by default)
 - `hydra build`: build UI bundles + C++ server
@@ -152,7 +152,7 @@ Examples:
 hydra dev
 hydra dev --prod
 
-hydra new myapp --external-engine
+hydra new myapp
 hydra doctor
 
 hydra build
@@ -180,7 +180,7 @@ cmake --install build-engine
 
 2. Scaffold a new app that links external engine:
 ```bash
-hydra new myapp --external-engine
+hydra new myapp
 cd myapp
 ```
 

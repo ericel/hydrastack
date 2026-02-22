@@ -107,6 +107,41 @@ target_compile_definitions(hydra_demo
 )
 """
 
+ANSI_RESET = "\033[0m"
+ANSI_BOLD = "\033[1m"
+ANSI_RED = "\033[31m"
+ANSI_GREEN = "\033[32m"
+ANSI_YELLOW = "\033[33m"
+ANSI_BLUE = "\033[34m"
+
+
+def use_ansi_colors() -> bool:
+    if os.environ.get("NO_COLOR", "").strip():
+        return False
+    force_color = os.environ.get("FORCE_COLOR", "").strip()
+    if force_color and force_color != "0":
+        return True
+    if os.environ.get("TERM", "").strip().lower() == "dumb":
+        return False
+    return bool(getattr(sys.stdout, "isatty", lambda: False)())
+
+
+def colorize(text: str, *styles: str) -> str:
+    if not styles or not use_ansi_colors():
+        return text
+    return f"{''.join(styles)}{text}{ANSI_RESET}"
+
+
+def print_hydra(message: str, *, color: str | None = None, error: bool = False) -> None:
+    stream = sys.stderr if error else sys.stdout
+    tag = colorize("[hydra]", ANSI_BOLD, color) if color else "[hydra]"
+    print(f"{tag} {message}", file=stream)
+
+
+def print_new(message: str, *, color: str | None = None) -> None:
+    tag = colorize("[new]", ANSI_BOLD, color) if color else "[new]"
+    print(f"{tag} {message}")
+
 
 def resolve_template_root(template_root_arg: str | None) -> Path:
     def is_valid_template_root(path: Path) -> bool:
@@ -374,7 +409,7 @@ def run_command(
     env: Mapping[str, str] | None = None,
 ) -> int:
     display = " ".join(cmd)
-    print(f"[hydra] $ {display}")
+    print_hydra(f"$ {display}", color=ANSI_BLUE)
     completed = subprocess.run(
         list(cmd),
         cwd=str(cwd) if cwd else None,
@@ -540,9 +575,10 @@ def bootstrap_hydrastack_engine_install(mode: str) -> Path | None:
     build_dir = source_root / "build-engine"
     build_type = "Release" if mode == "prod" else "Debug"
 
-    print(
-        f"[hydra] HydraStack package missing; bootstrapping engine to {install_prefix} "
-        f"from {source_root} ..."
+    print_hydra(
+        f"HydraStack package missing; bootstrapping engine to {install_prefix} "
+        f"from {source_root} ...",
+        color=ANSI_YELLOW,
     )
     run_command(
         [
@@ -903,7 +939,10 @@ def ensure_cmake_configured(
     has_conanfile = (root / "conanfile.py").exists()
     if not toolchain and has_conanfile:
         if shutil.which("conan"):
-            print(f"[hydra] Toolchain missing; running conan install ({build_type})...")
+            print_hydra(
+                f"Toolchain missing; running conan install ({build_type})...",
+                color=ANSI_YELLOW,
+            )
             run_command(
                 [
                     "conan",
@@ -920,9 +959,10 @@ def ensure_cmake_configured(
             if conan_toolchain.exists():
                 toolchain = str(conan_toolchain)
         else:
-            print(
-                "[hydra] conan not found; trying plain CMake configure "
-                "(install conan or set CMAKE_TOOLCHAIN_FILE if configure fails)."
+            print_hydra(
+                "conan not found; trying plain CMake configure "
+                "(install conan or set CMAKE_TOOLCHAIN_FILE if configure fails).",
+                color=ANSI_YELLOW,
             )
 
     hydra_stack_dir = os.environ.get("HydraStack_DIR", "").strip()
@@ -946,7 +986,7 @@ def ensure_cmake_configured(
                 "before running hydra dev."
             )
         hydra_stack_dir = str(valid.parent)
-        print(f"[hydra] Using HydraStack package from {hydra_stack_dir}")
+        print_hydra(f"Using HydraStack package from {hydra_stack_dir}", color=ANSI_GREEN)
 
     cmake_cmd = [
         "cmake",
@@ -988,8 +1028,9 @@ def cmd_new(args: argparse.Namespace) -> int:
         destination.mkdir(parents=True, exist_ok=True)
 
     ignore_func = shutil.ignore_patterns(*SCAFFOLD_IGNORE_NAMES)
+    use_external_engine = args.external_engine or not args.vendored_engine
     scaffold_dirs: Sequence[str]
-    if args.external_engine:
+    if use_external_engine:
         scaffold_dirs = tuple(
             directory for directory in SCAFFOLD_DIRS if directory not in {"engine", "cmake"}
         )
@@ -1021,24 +1062,26 @@ def cmd_new(args: argparse.Namespace) -> int:
     if favicon.exists():
         shutil.copy2(favicon, public_dir / "favicon.ico")
 
-    if args.external_engine:
+    if use_external_engine:
         write_external_engine_cmakelists(destination / "CMakeLists.txt")
         patch_conanfile_for_external_engine(destination / "conanfile.py")
-        print("[new] mode: external-engine (HydraStack::hydra_engine)")
+        print_new("mode: external-engine (HydraStack::hydra_engine)", color=ANSI_GREEN)
+    else:
+        print_new("mode: vendored-engine (copies engine/ and cmake/)", color=ANSI_YELLOW)
 
     if (destination / "app").exists() and not (destination / "demo").exists():
         normalize_generated_layout_to_app(destination)
 
-    write_app_readme(destination, args.external_engine)
-    if args.external_engine:
+    write_app_readme(destination, use_external_engine)
+    if use_external_engine:
         third_party_notices = destination / "THIRD_PARTY_NOTICES.md"
         if third_party_notices.exists():
             third_party_notices.unlink()
     else:
         write_third_party_notices(destination, root)
 
-    print(f"[new] scaffold created at {destination}")
-    print(f"[new] next: cd {destination} && hydra dev")
+    print_new(f"scaffold created at {destination}", color=ANSI_GREEN)
+    print_new(f"next: cd {destination} && hydra dev", color=ANSI_BLUE)
     return 0
 
 
@@ -1053,7 +1096,7 @@ def cmd_dev(args: argparse.Namespace) -> int:
 
     cache_file = build_dir / "CMakeCache.txt"
     if not cache_file.exists():
-        print(f"[hydra] Build cache missing; configuring {build_dir} ...")
+        print_hydra(f"Build cache missing; configuring {build_dir} ...", color=ANSI_YELLOW)
     ensure_cmake_configured(root, build_dir, mode=mode, reconfigure=False)
     validate_v8_for_runtime(root, build_dir)
 
@@ -1156,13 +1199,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--template-root",
         help="Template root for hydra new (defaults to bundled scaffold)",
     )
-    new_cmd.add_argument(
+    engine_mode = new_cmd.add_mutually_exclusive_group()
+    engine_mode.add_argument(
         "--external-engine",
         action="store_true",
         help=(
-            "Do not copy engine/cmake; generated app links installed HydraStack::hydra_engine "
-            "and uses system hydra CLI"
+            "Use external-engine layout (default): do not copy engine/cmake; generated app "
+            "links installed HydraStack::hydra_engine and uses system hydra CLI"
         ),
+    )
+    engine_mode.add_argument(
+        "--vendored-engine",
+        action="store_true",
+        help="Copy engine/cmake into app (legacy behavior)",
     )
     new_cmd.set_defaults(func=cmd_new)
 
@@ -1255,10 +1304,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         return int(args.func(args))
     except KeyboardInterrupt:
-        print("\n[hydra] Interrupted. Shutting down...", file=sys.stderr)
+        print_hydra("Interrupted. Shutting down...", color=ANSI_YELLOW, error=True)
         return 130
     except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(colorize(f"error: {exc}", ANSI_BOLD, ANSI_RED), file=sys.stderr)
         return 2
 
 

@@ -100,7 +100,7 @@ cmake --install build-engine
 ### 3.2 Scaffold And Run App
 
 ```bash
-hydra new myapp --external-engine
+hydra new myapp
 cd myapp
 export CMAKE_PREFIX_PATH="$HOME/.local/hydrastack:$CMAKE_PREFIX_PATH"
 hydra doctor

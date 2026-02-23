@@ -46,7 +46,7 @@ On macOS with Homebrew V8 (`/opt/homebrew/opt/v8`), HydraStack auto-applies:
 ```bash
 cd hydrastack
 conan install . --output-folder=build --build=missing -s build_type=Release
-cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake \
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=build/build/Release/generators/conan_toolchain.cmake \
   -DV8_INCLUDE_DIR=/path/to/v8/include \
   -DV8_LIBRARIES="/path/to/v8/libs"
 cmake --build build -j

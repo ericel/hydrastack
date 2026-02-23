@@ -465,6 +465,26 @@ def resolve_mode_paths(
     return build_dir.resolve(), config_path.resolve()
 
 
+def find_conan_toolchain(build_dir: Path, build_type: str) -> Path | None:
+    build_types = {build_type, build_type.lower(), build_type.upper(), build_type.capitalize()}
+    candidates: List[Path] = [
+        build_dir / "conan_toolchain.cmake",
+        build_dir / "generators" / "conan_toolchain.cmake",
+    ]
+    for entry in build_types:
+        candidates.extend(
+            (
+                build_dir / entry / "generators" / "conan_toolchain.cmake",
+                build_dir / "build" / entry / "generators" / "conan_toolchain.cmake",
+            )
+        )
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def parse_cmake_cache(cache_file: Path) -> Dict[str, str]:
     values: Dict[str, str] = {}
     if not cache_file.exists():
@@ -606,8 +626,8 @@ def bootstrap_hydrastack_engine_install(mode: str) -> Path | None:
         f"-DCMAKE_INSTALL_PREFIX={install_prefix}",
         "-DHYDRA_V8_AUTODETECT=ON",
     ]
-    conan_toolchain = build_dir / "conan_toolchain.cmake"
-    if conan_toolchain.exists():
+    conan_toolchain = find_conan_toolchain(build_dir, build_type)
+    if conan_toolchain is not None:
         cmake_cmd.append(f"-DCMAKE_TOOLCHAIN_FILE={conan_toolchain}")
     v8_include = os.environ.get("V8_INCLUDE_DIR", "").strip()
     v8_libs = os.environ.get("V8_LIBRARIES", "").strip()
@@ -932,11 +952,13 @@ def ensure_cmake_configured(
     build_type = "Release" if mode == "prod" else "Debug"
 
     toolchain = os.environ.get("CMAKE_TOOLCHAIN_FILE", "").strip()
-    conan_toolchain = build_dir / "conan_toolchain.cmake"
-    if not toolchain and conan_toolchain.exists():
-        toolchain = str(conan_toolchain)
-
     has_conanfile = (root / "conanfile.py").exists()
+
+    if not toolchain:
+        conan_toolchain = find_conan_toolchain(build_dir, build_type)
+        if conan_toolchain is not None:
+            toolchain = str(conan_toolchain)
+
     if not toolchain and has_conanfile:
         if shutil.which("conan"):
             print_hydra(
@@ -956,7 +978,8 @@ def ensure_cmake_configured(
                 ],
                 cwd=root,
             )
-            if conan_toolchain.exists():
+            conan_toolchain = find_conan_toolchain(build_dir, build_type)
+            if conan_toolchain is not None:
                 toolchain = str(conan_toolchain)
         else:
             print_hydra(

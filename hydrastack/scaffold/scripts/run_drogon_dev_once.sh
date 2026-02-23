@@ -17,7 +17,8 @@ fi
 if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
   echo "Build directory is not configured: $BUILD_DIR" >&2
   echo "Run CMake configure first (example):" >&2
-  echo "  cmake -S . -B build -DV8_INCLUDE_DIR=... -DV8_LIBRARIES=..." >&2
+  echo "  conan install . --output-folder build --build=missing -s build_type=Debug" >&2
+  echo "  cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=build/build/Debug/generators/conan_toolchain.cmake" >&2
   exit 1
 fi
 

@@ -422,7 +422,20 @@ void installHydraErrorHandler() {
 
 int main(int argc, char *argv[]) {
 #ifdef HYDRA_PUBLIC_DIR
-    drogon::app().setDocumentRoot(HYDRA_PUBLIC_DIR);
+    // HYDRA_PUBLIC_DIR is the compile-time CMAKE_CURRENT_SOURCE_DIR/public — useful
+    // for `hydra dev` flows where the binary runs from the build tree. In packaged
+    // / docker deploys the source tree path doesn't exist at runtime, and
+    // unconditionally calling setDocumentRoot with a missing directory leaves
+    // drogon's static-file router bound to the dead path even after loadConfigFile
+    // updates document_root. Skip the call when the compile-time path doesn't
+    // exist — loadConfigFile will set document_root from the JSON config.
+    {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        if (fs::is_directory(fs::path(HYDRA_PUBLIC_DIR), ec)) {
+            drogon::app().setDocumentRoot(HYDRA_PUBLIC_DIR);
+        }
+    }
 #endif
 
     auto resolveCompatibilityConfigPath = [](std::string path) {

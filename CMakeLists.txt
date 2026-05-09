@@ -11,8 +11,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(HYDRA_BUILD_UI "Build React/Tailwind assets via npm" OFF)
 option(HYDRA_BUILD_DEMO "Build the hydra_demo application" ON)
 
-find_package(drogon CONFIG REQUIRED)
-find_package(jsoncpp CONFIG REQUIRED)
+# Conan-center generates {Drogon,JsonCpp}Config.cmake (capital), Homebrew/system
+# packages generate the lowercase {drogon,jsoncpp}Config.cmake. macOS HFS+ matches
+# either case-insensitively; Linux ext4 doesn't. Try the capital variant first
+# (Conan/Linux), fall back to lowercase (Homebrew/system) so both worlds work.
+find_package(Drogon CONFIG QUIET)
+if(NOT Drogon_FOUND)
+  find_package(drogon CONFIG REQUIRED)
+endif()
+
+find_package(JsonCpp CONFIG QUIET)
+if(NOT JsonCpp_FOUND)
+  find_package(jsoncpp CONFIG REQUIRED)
+endif()
 
 set(V8_COMPILE_DEFINITIONS
     ""

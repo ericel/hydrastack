@@ -135,6 +135,33 @@ function collectSourceFiles(dirPath: string): string[] {
   return out;
 }
 
+// True iff `token` plausibly looks like a Tailwind/CSS-Module class name.
+// Permits the full Tailwind character set: letters, digits, `-`, `:` (variants
+// like `md:hidden`), `[]` (arbitrary values), `()` (color-mix etc.), `/` (opacity
+// like `bg-blue-500/50`), `.` (decimals like `py-3.5`). Rejects URL/query
+// indicators (`=`, `?`, `&`, `#`, `<`, `>`) and whitespace.
+function looksLikeClassToken(token: string): boolean {
+  if (!token || token.length > 80) return false;
+  if (!/^[a-zA-Z\[\-]/.test(token)) return false;
+  return /^[a-zA-Z0-9\-:_/\[\]().,%@!&]+$/.test(token);
+}
+
+// True iff `literal` plausibly looks like a multi-token class list. Used by
+// the helper-function harvesting + rewriting passes to spot strings like
+// `"flex items-center gap-3 rounded-xl border-l-[3px] px-4 py-3.5 ..."` that
+// live OUTSIDE direct `className={...}` contexts (e.g. inside a navLinkClass
+// helper that's later passed to className).
+function looksLikeClassList(literal: string): boolean {
+  const trimmed = literal.trim();
+  if (!trimmed) return false;
+  const tokens = trimmed.split(/\s+/);
+  if (tokens.length < 2) return false;
+  for (const t of tokens) {
+    if (!looksLikeClassToken(t)) return false;
+  }
+  return true;
+}
+
 function extractClassLiterals(code: string): string[] {
   const literals: string[] = [];
 
@@ -168,6 +195,22 @@ function extractClassLiterals(code: string): string[] {
     if (bodyEnd === -1) break;
     extractFromExpressionBody(code.slice(bodyStart, bodyEnd), literals);
     opener.lastIndex = bodyEnd + 1;
+  }
+
+  // Helper-function class strings — string literals that look like class lists
+  // anywhere in the file. This catches helpers like
+  //   export function navLinkClass(isActive) {
+  //     return ["flex items-center gap-3 ...", isActive ? "..." : "..."].join(" ");
+  //   }
+  // where the class strings live OUTSIDE any direct className={...} context.
+  // Conservative heuristic (looksLikeClassList): multi-token only, every token
+  // must syntactically look like a Tailwind class. Random log/error/text
+  // strings essentially never satisfy this.
+  for (const m2 of code.matchAll(/"((?:\\.|[^"\\])*)"/g)) {
+    if (m2[1] && looksLikeClassList(m2[1])) literals.push(m2[1]);
+  }
+  for (const m2 of code.matchAll(/'((?:\\.|[^'\\])*)'/g)) {
+    if (m2[1] && looksLikeClassList(m2[1])) literals.push(m2[1]);
   }
 
   return literals;
@@ -287,6 +330,27 @@ function buildClassMap(): Map<string, string> {
 
 function rewriteClassTokens(value: string, classMap: Map<string, string>): string {
   return value.replace(/\S+/g, (token) => classMap.get(token) ?? token);
+}
+
+// Decide whether a string literal found OUTSIDE a `className={...}` JSX
+// expression should be treated as a class list and obfuscated. Used by the
+// final pass in rewriteSourceClasses to handle helper-function patterns.
+//
+// Constraints to avoid corrupting unrelated strings:
+//   • multi-token only — single tokens are too risky (e.g. `"flex"` as a CSS
+//     `display` value, an enum string, etc.)
+//   • every token must already be in the classMap — strings with even one
+//     non-class token are left alone. Random multi-word strings essentially
+//     never satisfy this since classMap entries are real class names.
+function shouldRewriteAsClassList(literal: string, classMap: Map<string, string>): boolean {
+  const trimmed = literal.trim();
+  if (!trimmed) return false;
+  const tokens = trimmed.split(/\s+/);
+  if (tokens.length < 2) return false;
+  for (const token of tokens) {
+    if (!classMap.has(token)) return false;
+  }
+  return true;
 }
 
 // Rewrite string literals inside a `${...}` block — by convention, anything
@@ -466,6 +530,24 @@ function rewriteSourceClasses(code: string, classMap: Map<string, string>): stri
     .replace(/className\s*=\s*'([^']*)'/g, (_match, literal: string) =>
       `className='${rewriteClassTokens(literal, classMap)}'`
     );
+
+  // Helper-function strings (e.g. `navLinkClass(isActive)`-style helpers that
+  // build a class string outside any direct `className={...}` JSX expression).
+  // We rewrite every multi-token string literal whose tokens are ALL known to
+  // be class names (i.e. every token has an entry in classMap). Single-token
+  // strings are left alone — those could be unrelated identifiers like
+  // `"flex"` used as a CSS display value or React state. Multi-token strings
+  // where every word is a real Tailwind class are essentially always class
+  // lists in practice.
+  code = code
+    .replace(/"((?:\\.|[^"\\])*)"/g, (match, inner: string) => {
+      if (!shouldRewriteAsClassList(inner, classMap)) return match;
+      return `"${rewriteClassTokens(inner, classMap)}"`;
+    })
+    .replace(/'((?:\\.|[^'\\])*)'/g, (match, inner: string) => {
+      if (!shouldRewriteAsClassList(inner, classMap)) return match;
+      return `'${rewriteClassTokens(inner, classMap)}'`;
+    });
 
   // JSX `className={...}` expressions — anything inside the braces.
   // Previously this was a list of narrow regex patterns (one for `{"foo"}`,

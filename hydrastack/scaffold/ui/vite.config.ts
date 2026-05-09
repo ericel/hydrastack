@@ -135,6 +135,23 @@ function collectSourceFiles(dirPath: string): string[] {
   return out;
 }
 
+function looksLikeClassToken(token: string): boolean {
+  if (!token || token.length > 80) return false;
+  if (!/^[a-zA-Z\[\-]/.test(token)) return false;
+  return /^[a-zA-Z0-9\-:_/\[\]().,%@!&]+$/.test(token);
+}
+
+function looksLikeClassList(literal: string): boolean {
+  const trimmed = literal.trim();
+  if (!trimmed) return false;
+  const tokens = trimmed.split(/\s+/);
+  if (tokens.length < 2) return false;
+  for (const t of tokens) {
+    if (!looksLikeClassToken(t)) return false;
+  }
+  return true;
+}
+
 function extractClassLiterals(code: string): string[] {
   const literals: string[] = [];
 
@@ -157,9 +174,6 @@ function extractClassLiterals(code: string): string[] {
   // expression body and harvest every string literal and every template
   // literal we encounter. Covers `{"foo"}`, `{'foo'}`, `` {`foo ${...}`} ``,
   // `{[a, b ? "x" : "y"].join(" ")}`, `{cn("foo")}`, `{cond ? "a" : "b"}`, etc.
-  // Without this generalisation the previous narrow regexes silently skipped
-  // anything but the trivial cases — leaving real Tailwind utility classes
-  // out of the classMap and therefore also out of the obfuscated CSS.
   const opener = /className\s*=\s*\{/g;
   let m: RegExpExecArray | null;
   while ((m = opener.exec(code)) !== null) {
@@ -168,6 +182,17 @@ function extractClassLiterals(code: string): string[] {
     if (bodyEnd === -1) break;
     extractFromExpressionBody(code.slice(bodyStart, bodyEnd), literals);
     opener.lastIndex = bodyEnd + 1;
+  }
+
+  // Helper-function class strings — string literals that look like class lists
+  // anywhere in the file. Catches helpers like `navLinkClass(isActive)` where
+  // the strings live OUTSIDE any direct className={...} context. Conservative:
+  // multi-token only, every token must syntactically look like a Tailwind class.
+  for (const m2 of code.matchAll(/"((?:\\.|[^"\\])*)"/g)) {
+    if (m2[1] && looksLikeClassList(m2[1])) literals.push(m2[1]);
+  }
+  for (const m2 of code.matchAll(/'((?:\\.|[^'\\])*)'/g)) {
+    if (m2[1] && looksLikeClassList(m2[1])) literals.push(m2[1]);
   }
 
   return literals;
@@ -284,6 +309,27 @@ function buildClassMap(): Map<string, string> {
 
 function rewriteClassTokens(value: string, classMap: Map<string, string>): string {
   return value.replace(/\S+/g, (token) => classMap.get(token) ?? token);
+}
+
+// Decide whether a string literal found OUTSIDE a `className={...}` JSX
+// expression should be treated as a class list and obfuscated. Used by the
+// final pass in rewriteSourceClasses to handle helper-function patterns.
+//
+// Constraints to avoid corrupting unrelated strings:
+//   • multi-token only — single tokens are too risky (e.g. `"flex"` as a CSS
+//     `display` value, an enum string, etc.)
+//   • every token must already be in the classMap — strings with even one
+//     non-class token are left alone. Random multi-word strings essentially
+//     never satisfy this since classMap entries are real class names.
+function shouldRewriteAsClassList(literal: string, classMap: Map<string, string>): boolean {
+  const trimmed = literal.trim();
+  if (!trimmed) return false;
+  const tokens = trimmed.split(/\s+/);
+  if (tokens.length < 2) return false;
+  for (const token of tokens) {
+    if (!classMap.has(token)) return false;
+  }
+  return true;
 }
 
 // Rewrite string literals inside a `${...}` block — by convention, anything
@@ -462,6 +508,20 @@ function rewriteSourceClasses(code: string, classMap: Map<string, string>): stri
     .replace(/className\s*=\s*'([^']*)'/g, (_match, literal: string) =>
       `className='${rewriteClassTokens(literal, classMap)}'`
     );
+
+  // Helper-function strings (e.g. `navLinkClass(isActive)`-style helpers that
+  // build a class string outside any direct `className={...}` JSX expression).
+  // Rewrite every multi-token string literal whose tokens are ALL known to be
+  // class names. Single-token strings are left alone.
+  code = code
+    .replace(/"((?:\\.|[^"\\])*)"/g, (match, inner: string) => {
+      if (!shouldRewriteAsClassList(inner, classMap)) return match;
+      return `"${rewriteClassTokens(inner, classMap)}"`;
+    })
+    .replace(/'((?:\\.|[^'\\])*)'/g, (match, inner: string) => {
+      if (!shouldRewriteAsClassList(inner, classMap)) return match;
+      return `'${rewriteClassTokens(inner, classMap)}'`;
+    });
 
   // JSX `className={...}` expressions — anything inside the braces.
   // Previously this was a list of narrow regex patterns (one for `{"foo"}`,

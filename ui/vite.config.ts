@@ -137,24 +137,106 @@ function collectSourceFiles(dirPath: string): string[] {
 
 function extractClassLiterals(code: string): string[] {
   const literals: string[] = [];
-  const patterns = [
-    /className\s*=\s*"([^"]*)"/g,
-    /className\s*=\s*'([^']*)'/g,
-    /className\s*=\s*\{\s*"([^"]*)"\s*\}/g,
-    /className\s*=\s*\{\s*'([^']*)'\s*\}/g,
-    /className\s*=\s*\{\s*`([^`$]*)`\s*\}/g
-  ];
 
-  for (const pattern of patterns) {
-    for (const match of code.matchAll(pattern)) {
-      const value = match[1];
-      if (value) {
-        literals.push(value);
-      }
-    }
+  // JSX attribute string forms.
+  for (const m of code.matchAll(/className\s*=\s*"([^"]*)"/g)) {
+    if (m[1]) literals.push(m[1]);
+  }
+  for (const m of code.matchAll(/className\s*=\s*'([^']*)'/g)) {
+    if (m[1]) literals.push(m[1]);
+  }
+  // Object-property syntax.
+  for (const m of code.matchAll(/className:\s*"([^"]*)"/g)) {
+    if (m[1]) literals.push(m[1]);
+  }
+  for (const m of code.matchAll(/className:\s*'([^']*)'/g)) {
+    if (m[1]) literals.push(m[1]);
+  }
+
+  // JSX `className={...}` expressions: anything inside the braces. We walk the
+  // expression body and harvest every string literal and every template
+  // literal we encounter. Covers `{"foo"}`, `{'foo'}`, `` {`foo ${...}`} ``,
+  // `{[a, b ? "x" : "y"].join(" ")}`, `{cn("foo")}`, `{cond ? "a" : "b"}`, etc.
+  // Without this generalisation the previous narrow regexes silently skipped
+  // anything but the trivial cases — leaving real Tailwind utility classes
+  // out of the classMap and therefore also out of the obfuscated CSS.
+  const opener = /className\s*=\s*\{/g;
+  let m: RegExpExecArray | null;
+  while ((m = opener.exec(code)) !== null) {
+    const bodyStart = m.index + m[0].length;
+    const bodyEnd = findMatchingBrace(code, bodyStart);
+    if (bodyEnd === -1) break;
+    extractFromExpressionBody(code.slice(bodyStart, bodyEnd), literals);
+    opener.lastIndex = bodyEnd + 1;
   }
 
   return literals;
+}
+
+function extractFromExpressionBody(body: string, out: string[]): void {
+  let i = 0;
+  while (i < body.length) {
+    const c = body[i];
+    if (c === "\\") {
+      i += 2;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      const quote = c;
+      let j = i + 1;
+      while (j < body.length) {
+        if (body[j] === "\\") {
+          j += 2;
+          continue;
+        }
+        if (body[j] === quote) break;
+        j++;
+      }
+      out.push(body.slice(i + 1, j));
+      i = j + 1;
+      continue;
+    }
+    if (c === "`") {
+      let j = i + 1;
+      while (j < body.length) {
+        if (body[j] === "\\") {
+          j += 2;
+          continue;
+        }
+        if (body[j] === "`") break;
+        if (body[j] === "$" && body[j + 1] === "{") {
+          const closeIdx = findMatchingBrace(body, j + 2);
+          if (closeIdx === -1) {
+            j = body.length;
+            break;
+          }
+          // Recurse into interpolation body to find string literals.
+          extractFromExpressionBody(body.slice(j + 2, closeIdx), out);
+          j = closeIdx + 1;
+          continue;
+        }
+        j++;
+      }
+      // Static template parts: split on ${...} segments and push the literal
+      // text between them.
+      const tmpl = body.slice(i + 1, j);
+      let k = 0;
+      while (k < tmpl.length) {
+        const interp = tmpl.indexOf("${", k);
+        if (interp === -1) {
+          out.push(tmpl.slice(k));
+          break;
+        }
+        out.push(tmpl.slice(k, interp));
+        const close = findMatchingBrace(tmpl, interp + 2);
+        if (close === -1) break;
+        k = close + 1;
+      }
+      i = j + 1;
+      continue;
+    }
+    i++;
+  }
 }
 
 function splitClassTokens(value: string): string[] {
@@ -207,42 +289,214 @@ function rewriteClassTokens(value: string, classMap: Map<string, string>): strin
   return value.replace(/\S+/g, (token) => classMap.get(token) ?? token);
 }
 
+// Rewrite string literals inside a `${...}` block — by convention, anything
+// quoted inside a `className={\`...\`}` interpolation is a class-token list, so
+// we rewrite its tokens. Non-string expressions (function calls, identifiers,
+// etc.) flow through unchanged because rewriteClassTokens only matches \S+
+// inside the captured string body.
+function rewriteInterpolationStringLiterals(
+  code: string,
+  classMap: Map<string, string>
+): string {
+  return code
+    .replace(/"((?:\\.|[^"\\])*)"/g, (_match, inner: string) =>
+      `"${rewriteClassTokens(inner, classMap)}"`
+    )
+    .replace(/'((?:\\.|[^'\\])*)'/g, (_match, inner: string) =>
+      `'${rewriteClassTokens(inner, classMap)}'`
+    );
+}
+
+// Find the matching '}' for an opening '${' starting at openIndex (0-based,
+// pointing at the character AFTER the '{'). Returns the index of the matching
+// '}' or -1 if not found. Skips over string and (best-effort) template-literal
+// contents so braces inside strings don't disrupt counting.
+function findMatchingBrace(source: string, openIndex: number): number {
+  let depth = 1;
+  let i = openIndex;
+  while (i < source.length) {
+    const c = source[i];
+    if (c === "\\") {
+      i += 2;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      const quote = c;
+      i++;
+      while (i < source.length) {
+        if (source[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (source[i] === quote) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+    if (c === "`") {
+      i++;
+      while (i < source.length && source[i] !== "`") {
+        if (source[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        i++;
+      }
+      i++;
+      continue;
+    }
+    if (c === "{") {
+      depth++;
+    } else if (c === "}") {
+      depth--;
+      if (depth === 0) return i;
+    }
+    i++;
+  }
+  return -1;
+}
+
+// Rewrite the body of a template literal (the substring between the surrounding
+// backticks) used as a className value. Walks the body and:
+//   • static segments (text outside of ${...}) → rewriteClassTokens
+//   • ${...} interpolations → rewriteInterpolationStringLiterals on the body,
+//     so things like `${isOpen ? "translate-x-0" : "-translate-x-full"}` get
+//     their inner string literals obfuscated too.
+function rewriteTemplateBody(body: string, classMap: Map<string, string>): string {
+  let out = "";
+  let i = 0;
+  while (i < body.length) {
+    const interpStart = body.indexOf("${", i);
+    if (interpStart === -1) {
+      out += rewriteClassTokens(body.slice(i), classMap);
+      break;
+    }
+    out += rewriteClassTokens(body.slice(i, interpStart), classMap);
+    const interpEnd = findMatchingBrace(body, interpStart + 2);
+    if (interpEnd === -1) {
+      // Malformed input — leave the remainder verbatim rather than corrupt it.
+      out += body.slice(interpStart);
+      break;
+    }
+    const interp = body.slice(interpStart + 2, interpEnd);
+    out += "${" + rewriteInterpolationStringLiterals(interp, classMap) + "}";
+    i = interpEnd + 1;
+  }
+  return out;
+}
+
+// Walk a JSX expression body inside `className={...}` and rewrite every
+// recognisable class-token source: bare string literals, template literals
+// (with interpolations), and nested string literals inside any expression.
+// Identifiers, function calls, member accesses etc. flow through untouched.
+function rewriteJsxExpressionBody(body: string, classMap: Map<string, string>): string {
+  let out = "";
+  let i = 0;
+  while (i < body.length) {
+    const c = body[i];
+    if (c === "\\") {
+      out += body.slice(i, i + 2);
+      i += 2;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      const quote = c;
+      let j = i + 1;
+      while (j < body.length) {
+        if (body[j] === "\\") {
+          j += 2;
+          continue;
+        }
+        if (body[j] === quote) break;
+        j++;
+      }
+      const inner = body.slice(i + 1, j);
+      out += quote + rewriteClassTokens(inner, classMap) + quote;
+      i = j + 1;
+      continue;
+    }
+    if (c === "`") {
+      let j = i + 1;
+      while (j < body.length) {
+        if (body[j] === "\\") {
+          j += 2;
+          continue;
+        }
+        if (body[j] === "`") break;
+        if (body[j] === "$" && body[j + 1] === "{") {
+          const closeIdx = findMatchingBrace(body, j + 2);
+          if (closeIdx === -1) {
+            j = body.length;
+            break;
+          }
+          j = closeIdx + 1;
+          continue;
+        }
+        j++;
+      }
+      const inner = body.slice(i + 1, j);
+      out += "`" + rewriteTemplateBody(inner, classMap) + "`";
+      i = j + 1;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
 function rewriteSourceClasses(code: string, classMap: Map<string, string>): string {
-  const replaceClassLiteral =
-    (pattern: RegExp, replaceTemplate: (value: string) => string): void => {
-      code = code.replace(pattern, (_full, literal) => replaceTemplate(literal));
-    };
+  // Non-JSX object-property syntax (e.g. `{ className: "foo" }`).
+  code = code
+    .replace(/className:\s*"([^"]*)"/g, (_match, literal: string) =>
+      `className: "${rewriteClassTokens(literal, classMap)}"`
+    )
+    .replace(/className:\s*'([^']*)'/g, (_match, literal: string) =>
+      `className: '${rewriteClassTokens(literal, classMap)}'`
+    );
 
-  replaceClassLiteral(
-    /className\s*=\s*"([^"]*)"/g,
-    (literal) => `className="${rewriteClassTokens(literal, classMap)}"`
-  );
-  replaceClassLiteral(
-    /className\s*=\s*'([^']*)'/g,
-    (literal) => `className='${rewriteClassTokens(literal, classMap)}'`
-  );
-  replaceClassLiteral(
-    /className\s*=\s*\{\s*"([^"]*)"\s*\}/g,
-    (literal) => `className={"${rewriteClassTokens(literal, classMap)}"}`
-  );
-  replaceClassLiteral(
-    /className\s*=\s*\{\s*'([^']*)'\s*\}/g,
-    (literal) => `className={'${rewriteClassTokens(literal, classMap)}'}`
-  );
-  replaceClassLiteral(
-    /className\s*=\s*\{\s*`([^`$]*)`\s*\}/g,
-    (literal) => `className={\`${rewriteClassTokens(literal, classMap)}\`}`
-  );
-  replaceClassLiteral(
-    /className:\s*"([^"]*)"/g,
-    (literal) => `className: "${rewriteClassTokens(literal, classMap)}"`
-  );
-  replaceClassLiteral(
-    /className:\s*'([^']*)'/g,
-    (literal) => `className: '${rewriteClassTokens(literal, classMap)}'`
-  );
+  // JSX attribute string forms.
+  code = code
+    .replace(/className\s*=\s*"([^"]*)"/g, (_match, literal: string) =>
+      `className="${rewriteClassTokens(literal, classMap)}"`
+    )
+    .replace(/className\s*=\s*'([^']*)'/g, (_match, literal: string) =>
+      `className='${rewriteClassTokens(literal, classMap)}'`
+    );
 
-  return code;
+  // JSX `className={...}` expressions — anything inside the braces.
+  // Previously this was a list of narrow regex patterns (one for `{"foo"}`,
+  // one for `{`foo`}`, etc.) that silently skipped the common cases:
+  //   • template literals with ${...} interpolations
+  //   • array-join patterns: className={[ "foo", cond && "bar" ].join(" ")}
+  //   • function calls: className={cn("foo", { active: x })}
+  //   • ternaries:       className={cond ? "foo" : "bar"}
+  // All of which are common in real React+Tailwind code and were leaking raw
+  // class names into the SSR HTML. Now we walk the expression body once with
+  // findMatchingBrace and rewrite every string literal / template literal we
+  // encounter — string contents are treated as class-token lists by convention.
+  let out = "";
+  let lastEnd = 0;
+  const opener = /className\s*=\s*\{/g;
+  let m: RegExpExecArray | null;
+  while ((m = opener.exec(code)) !== null) {
+    const bodyStart = m.index + m[0].length;
+    out += code.slice(lastEnd, bodyStart);
+    const bodyEnd = findMatchingBrace(code, bodyStart);
+    if (bodyEnd === -1) {
+      out += code.slice(bodyStart);
+      lastEnd = code.length;
+      break;
+    }
+    out += rewriteJsxExpressionBody(code.slice(bodyStart, bodyEnd), classMap) + "}";
+    lastEnd = bodyEnd + 1;
+    opener.lastIndex = lastEnd;
+  }
+  out += code.slice(lastEnd);
+  return out;
 }
 
 function escapeRegex(value: string): string {

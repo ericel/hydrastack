@@ -142,6 +142,13 @@ if(V8_COMPILE_DEFINITIONS)
 elseif(APPLE AND V8_INCLUDE_DIR MATCHES "/opt/homebrew/.*/v8/include")
   list(APPEND HYDRA_V8_DEFINITIONS V8_COMPRESS_POINTERS V8_ENABLE_SANDBOX)
   message(STATUS "HydraStack detected Homebrew V8; applying defs: V8_COMPRESS_POINTERS;V8_ENABLE_SANDBOX")
+elseif(V8_LIBRARIES MATCHES "libv8_monolith")
+  # Linux convention: a v8_monolith static archive built with the recommended gn args
+  # (v8_monolithic=true v8_enable_pointer_compression=true v8_enable_sandbox=true). The
+  # embedder MUST be compiled with V8_COMPRESS_POINTERS / V8_ENABLE_SANDBOX or it
+  # crashes at startup with "Embedder-vs-V8 build configuration mismatch".
+  list(APPEND HYDRA_V8_DEFINITIONS V8_COMPRESS_POINTERS V8_ENABLE_SANDBOX)
+  message(STATUS "HydraStack detected V8 monolith static archive; applying defs: V8_COMPRESS_POINTERS;V8_ENABLE_SANDBOX")
 endif()
 
 target_include_directories(hydra_engine

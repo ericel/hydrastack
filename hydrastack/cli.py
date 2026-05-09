@@ -508,10 +508,15 @@ def project_uses_external_engine(root: Path) -> bool:
     if not cmake_file.exists():
         return False
     text = cmake_file.read_text(encoding="utf-8", errors="ignore")
-    return (
-        "find_package(HydraStack CONFIG REQUIRED)" in text
-        and "HydraStack::hydra_engine" in text
-    )
+    # Accept any find_package(HydraStack ...) variant. Apps may use REQUIRED for
+    # strict opt-in or QUIET when they want a graceful in-tree fallback for CI
+    # builds where HydraStack isn't installed yet (the wahalao-web pattern).
+    # Either way, if the source tree imports HydraStack::hydra_engine and tries
+    # to resolve it via find_package, runtime validation should follow the
+    # external-engine path (look at HydraStack_DIR / HydraStackTargets.cmake)
+    # rather than falling through to the in-tree V8_INCLUDE_DIR cache check.
+    has_find_package = bool(re.search(r"find_package\s*\(\s*HydraStack\b", text))
+    return has_find_package and "HydraStack::hydra_engine" in text
 
 
 def find_hydrastack_config_candidates(root: Path, cache: Mapping[str, str]) -> List[Path]:

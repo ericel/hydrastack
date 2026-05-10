@@ -911,6 +911,10 @@ void HydraSsrPlugin::registerDevProxyRoutes() {
 }
 
 void HydraSsrPlugin::initAndStart(const Json::Value &config) {
+    shellTitle_ = config.get("shell_title", config.get("app_title", "HydraStack")).asString();
+    if (shellTitle_.empty()) {
+        shellTitle_ = "HydraStack";
+    }
     ssrBundlePath_ = config.get("ssr_bundle_path", "./public/assets/ssr-bundle.js").asString();
     cssPath_ = config.get("css_path", "").asString();
     clientJsPath_ = config.get("client_js_path", "").asString();
@@ -1359,6 +1363,7 @@ std::string HydraSsrPlugin::render(const drogon::HttpRequestPtr &req,
 
             if (wrapFragment_ && !isLikelyFullDocument(html)) {
                 HtmlShellAssets assets;
+                assets.title = shellTitle_;
                 assets.cssPath = cssPath_;
                 assets.clientJsPath = clientJsPath_;
                 assets.hmrClientPath = hmrClientPath_;

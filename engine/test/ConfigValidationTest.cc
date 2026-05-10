@@ -75,6 +75,14 @@ int main() {
             const auto normalized = hydra::validateAndNormalizeHydraSsrPluginConfig(config);
             expectTrue(normalized.devModeEnabled == true, "dev mode resolved");
             expectTrue(normalized.resolvedAssetMode == "dev", "resolved asset mode");
+            expectTrue(normalized.shellTitle == "HydraStack", "default shell title");
+        }
+
+        {
+            auto config = makeBaseConfig("dev");
+            config["shell_title"] = "  Wahalao  ";
+            const auto normalized = hydra::validateAndNormalizeHydraSsrPluginConfig(config);
+            expectTrue(normalized.shellTitle == "Wahalao", "configured shell title trimmed");
         }
 
         {

@@ -1060,6 +1060,7 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
     }
 
     ssrBundlePath_ = normalizedConfig_.ssrBundlePath;
+    shellTitle_ = normalizedConfig_.shellTitle;
     cssPath_ = normalizedConfig_.cssPath;
     clientJsPath_ = normalizedConfig_.clientJsPath;
     assetManifestPath_ = normalizedConfig_.assetManifestPath;
@@ -1663,6 +1664,7 @@ SsrRenderResult HydraSsrPlugin::renderResult(const drogon::HttpRequestPtr &req,
                 !renderResult.html.empty() &&
                 !isLikelyFullDocument(renderResult.html)) {
                 HtmlShellAssets assets;
+                assets.title = shellTitle_;
                 assets.cssPath = cssPath_;
                 assets.clientJsPath = clientJsPath_;
                 assets.hmrClientPath = hmrClientPath_;

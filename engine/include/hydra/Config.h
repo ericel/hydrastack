@@ -15,6 +15,7 @@ enum class HydraAssetMode {
 };
 
 struct HydraSsrPluginConfig {
+    std::string shellTitle = "HydraStack";
     std::string ssrBundlePath = "./public/assets/ssr-bundle.js";
     std::string cssPath;
     std::string clientJsPath;

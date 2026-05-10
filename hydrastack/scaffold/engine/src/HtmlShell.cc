@@ -47,6 +47,28 @@ std::string escapeForJsString(std::string_view value) {
     return escaped;
 }
 
+std::string escapeHtmlText(std::string_view value) {
+    std::string escaped;
+    escaped.reserve(value.size());
+    for (const auto ch : value) {
+        switch (ch) {
+            case '&':
+                escaped.append("&amp;");
+                break;
+            case '<':
+                escaped.append("&lt;");
+                break;
+            case '>':
+                escaped.append("&gt;");
+                break;
+            default:
+                escaped.push_back(ch);
+                break;
+        }
+    }
+    return escaped;
+}
+
 }  // namespace
 
 std::string HtmlShell::wrap(const std::string &appHtml,
@@ -58,7 +80,8 @@ std::string HtmlShell::wrap(const std::string &appHtml,
          << "  <head>\n"
          << "    <meta charset=\"utf-8\" />\n"
          << "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n"
-         << "    <title>HydraStack</title>\n";
+         << "    <title>" << escapeHtmlText(assets.title.empty() ? "HydraStack" : assets.title)
+         << "</title>\n";
 
     if (!assets.cssPath.empty()) {
         html << "    <link rel=\"stylesheet\" href=\"" << assets.cssPath << "\" />\n";

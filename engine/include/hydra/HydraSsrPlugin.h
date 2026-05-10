@@ -106,6 +106,7 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
     void registerDevProxyRoutes();
 
     std::string ssrBundlePath_;
+    std::string shellTitle_ = "HydraStack";
     std::string cssPath_;
     std::string clientJsPath_;
     std::string assetManifestPath_ = "./public/assets/manifest.json";

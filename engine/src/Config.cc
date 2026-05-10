@@ -137,6 +137,11 @@ const char *assetModeName(HydraAssetMode mode) {
 HydraSsrPluginConfig validateAndNormalizeHydraSsrPluginConfig(const Json::Value &config) {
     HydraSsrPluginConfig normalized;
 
+    normalized.shellTitle = trimAsciiWhitespace(
+        config.get("shell_title", config.get("app_title", normalized.shellTitle)).asString());
+    if (normalized.shellTitle.empty()) {
+        normalized.shellTitle = "HydraStack";
+    }
     normalized.ssrBundlePath =
         config.get("ssr_bundle_path", normalized.ssrBundlePath).asString();
     normalized.cssPath = config.get("css_path", "").asString();
@@ -308,7 +313,8 @@ HydraSsrPluginConfig validateAndNormalizeHydraSsrPluginConfig(const Json::Value 
 
 std::string summarizeHydraSsrPluginConfig(const HydraSsrPluginConfig &config) {
     std::ostringstream out;
-    out << "runtime{bundle=" << config.ssrBundlePath
+    out << "runtime{title=" << config.shellTitle
+        << ", bundle=" << config.ssrBundlePath
         << ", timeout_ms{acquire=" << config.acquireTimeoutMs
         << ", render=" << config.renderTimeoutMs << "}}"
         << " | assets{mode=" << config.resolvedAssetMode

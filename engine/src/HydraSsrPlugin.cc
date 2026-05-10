@@ -629,6 +629,38 @@ std::optional<SsrRenderResult> tryParseSsrEnvelope(const std::string &renderOutp
         }
     }
 
+    if (payload.isMember("meta") && payload["meta"].isObject()) {
+        const auto &meta = payload["meta"];
+        const auto readMetaString = [&](const char *key) {
+            return meta.isMember(key) && meta[key].isString()
+                       ? trimAsciiWhitespace(meta[key].asString())
+                       : std::string();
+        };
+        result.title = readMetaString("title");
+        result.description = readMetaString("description");
+        result.canonicalUrl = readMetaString("canonicalUrl");
+        if (result.canonicalUrl.empty()) {
+            result.canonicalUrl = readMetaString("canonical_url");
+        }
+        result.robots = readMetaString("robots");
+        result.ogType = readMetaString("ogType");
+        if (result.ogType.empty()) {
+            result.ogType = readMetaString("og_type");
+        }
+        result.imageUrl = readMetaString("imageUrl");
+        if (result.imageUrl.empty()) {
+            result.imageUrl = readMetaString("image_url");
+        }
+        result.siteName = readMetaString("siteName");
+        if (result.siteName.empty()) {
+            result.siteName = readMetaString("site_name");
+        }
+        result.twitterCard = readMetaString("twitterCard");
+        if (result.twitterCard.empty()) {
+            result.twitterCard = readMetaString("twitter_card");
+        }
+    }
+
     if (payload.isMember("redirect") && payload["redirect"].isString()) {
         const auto redirectTarget = trimAsciiWhitespace(payload["redirect"].asString());
         if (!redirectTarget.empty()) {
@@ -1061,6 +1093,13 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
 
     ssrBundlePath_ = normalizedConfig_.ssrBundlePath;
     shellTitle_ = normalizedConfig_.shellTitle;
+    shellDescription_ = normalizedConfig_.shellDescription;
+    shellCanonicalUrl_ = normalizedConfig_.shellCanonicalUrl;
+    shellRobots_ = normalizedConfig_.shellRobots;
+    shellOgType_ = normalizedConfig_.shellOgType;
+    shellImageUrl_ = normalizedConfig_.shellImageUrl;
+    shellSiteName_ = normalizedConfig_.shellSiteName;
+    shellTwitterCard_ = normalizedConfig_.shellTwitterCard;
     cssPath_ = normalizedConfig_.cssPath;
     clientJsPath_ = normalizedConfig_.clientJsPath;
     assetManifestPath_ = normalizedConfig_.assetManifestPath;
@@ -1664,7 +1703,24 @@ SsrRenderResult HydraSsrPlugin::renderResult(const drogon::HttpRequestPtr &req,
                 !renderResult.html.empty() &&
                 !isLikelyFullDocument(renderResult.html)) {
                 HtmlShellAssets assets;
-                assets.title = shellTitle_;
+                assets.title = renderResult.title.empty() ? shellTitle_ : renderResult.title;
+                assets.description = renderResult.description.empty()
+                                         ? shellDescription_
+                                         : renderResult.description;
+                assets.canonicalUrl = renderResult.canonicalUrl.empty()
+                                          ? shellCanonicalUrl_
+                                          : renderResult.canonicalUrl;
+                assets.robots = renderResult.robots.empty() ? shellRobots_ : renderResult.robots;
+                assets.ogType = renderResult.ogType.empty() ? shellOgType_ : renderResult.ogType;
+                assets.imageUrl = renderResult.imageUrl.empty()
+                                      ? shellImageUrl_
+                                      : renderResult.imageUrl;
+                assets.siteName = renderResult.siteName.empty()
+                                      ? shellSiteName_
+                                      : renderResult.siteName;
+                assets.twitterCard = renderResult.twitterCard.empty()
+                                         ? shellTwitterCard_
+                                         : renderResult.twitterCard;
                 assets.cssPath = cssPath_;
                 assets.clientJsPath = clientJsPath_;
                 assets.hmrClientPath = hmrClientPath_;

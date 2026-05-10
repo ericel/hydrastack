@@ -142,6 +142,35 @@ HydraSsrPluginConfig validateAndNormalizeHydraSsrPluginConfig(const Json::Value 
     if (normalized.shellTitle.empty()) {
         normalized.shellTitle = "HydraStack";
     }
+    const Json::Value emptyMeta(Json::objectValue);
+    const auto &shellMeta =
+        config.isMember("shell_meta") && config["shell_meta"].isObject()
+            ? config["shell_meta"]
+            : emptyMeta;
+    const auto readShellMeta = [&](const char *topLevelKey,
+                                   const char *metaKey,
+                                   const std::string &fallback) {
+        if (config.isMember(topLevelKey) && config[topLevelKey].isString()) {
+            return trimAsciiWhitespace(config[topLevelKey].asString());
+        }
+        if (shellMeta.isMember(metaKey) && shellMeta[metaKey].isString()) {
+            return trimAsciiWhitespace(shellMeta[metaKey].asString());
+        }
+        return fallback;
+    };
+    normalized.shellDescription = readShellMeta(
+        "shell_description", "description", normalized.shellDescription);
+    normalized.shellCanonicalUrl = readShellMeta(
+        "shell_canonical_url", "canonical_url", normalized.shellCanonicalUrl);
+    normalized.shellRobots = readShellMeta("shell_robots", "robots", normalized.shellRobots);
+    normalized.shellOgType = readShellMeta("shell_og_type", "og_type", normalized.shellOgType);
+    if (normalized.shellOgType.empty()) {
+        normalized.shellOgType = "website";
+    }
+    normalized.shellImageUrl = readShellMeta("shell_image_url", "image_url", normalized.shellImageUrl);
+    normalized.shellSiteName = readShellMeta("shell_site_name", "site_name", normalized.shellSiteName);
+    normalized.shellTwitterCard = readShellMeta(
+        "shell_twitter_card", "twitter_card", normalized.shellTwitterCard);
     normalized.ssrBundlePath =
         config.get("ssr_bundle_path", normalized.ssrBundlePath).asString();
     normalized.cssPath = config.get("css_path", "").asString();

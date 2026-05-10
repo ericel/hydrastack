@@ -15,6 +15,10 @@ option(HYDRA_BUILD_DEMO "Build the hydra_demo application" ON)
 # packages generate the lowercase {drogon,jsoncpp}Config.cmake. macOS HFS+ matches
 # either case-insensitively; Linux ext4 doesn't. Try the capital variant first
 # (Conan/Linux), fall back to lowercase (Homebrew/system) so both worlds work.
+find_package(OpenSSL CONFIG QUIET)
+if(NOT OpenSSL_FOUND)
+  find_package(OpenSSL REQUIRED COMPONENTS SSL)
+endif()
 find_package(Drogon CONFIG QUIET)
 if(NOT Drogon_FOUND)
   find_package(drogon CONFIG REQUIRED)

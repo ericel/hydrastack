@@ -76,6 +76,51 @@ std::string escapeHtmlText(std::string_view value) {
     return escaped;
 }
 
+std::string escapeHtmlAttribute(std::string_view value) {
+    std::string escaped;
+    escaped.reserve(value.size());
+    for (const auto ch : value) {
+        switch (ch) {
+            case '&':
+                escaped.append("&amp;");
+                break;
+            case '<':
+                escaped.append("&lt;");
+                break;
+            case '>':
+                escaped.append("&gt;");
+                break;
+            case '"':
+                escaped.append("&quot;");
+                break;
+            default:
+                escaped.push_back(ch);
+                break;
+        }
+    }
+    return escaped;
+}
+
+void appendMetaName(std::ostringstream &html,
+                    std::string_view name,
+                    const std::string &content) {
+    if (content.empty()) {
+        return;
+    }
+    html << "    <meta name=\"" << name << "\" content=\""
+         << escapeHtmlAttribute(content) << "\" />\n";
+}
+
+void appendMetaProperty(std::ostringstream &html,
+                        std::string_view property,
+                        const std::string &content) {
+    if (content.empty()) {
+        return;
+    }
+    html << "    <meta property=\"" << property << "\" content=\""
+         << escapeHtmlAttribute(content) << "\" />\n";
+}
+
 }  // namespace
 
 std::string HtmlShell::wrap(const std::string &appHtml,
@@ -89,6 +134,27 @@ std::string HtmlShell::wrap(const std::string &appHtml,
          << "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n"
          << "    <title>" << escapeHtmlText(assets.title.empty() ? "HydraStack" : assets.title)
          << "</title>\n";
+
+    const auto title = assets.title.empty() ? std::string("HydraStack") : assets.title;
+    const auto twitterCard = !assets.twitterCard.empty()
+                                 ? assets.twitterCard
+                                 : (assets.imageUrl.empty() ? "summary" : "summary_large_image");
+    appendMetaName(html, "description", assets.description);
+    appendMetaName(html, "robots", assets.robots);
+    appendMetaProperty(html, "og:title", title);
+    appendMetaProperty(html, "og:description", assets.description);
+    appendMetaProperty(html, "og:type", assets.ogType.empty() ? "website" : assets.ogType);
+    appendMetaProperty(html, "og:url", assets.canonicalUrl);
+    appendMetaProperty(html, "og:image", assets.imageUrl);
+    appendMetaProperty(html, "og:site_name", assets.siteName);
+    appendMetaName(html, "twitter:card", twitterCard);
+    appendMetaName(html, "twitter:title", title);
+    appendMetaName(html, "twitter:description", assets.description);
+    appendMetaName(html, "twitter:image", assets.imageUrl);
+    if (!assets.canonicalUrl.empty()) {
+        html << "    <link rel=\"canonical\" href=\""
+             << escapeHtmlAttribute(assets.canonicalUrl) << "\" />\n";
+    }
 
     html << "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\" />\n"
          << "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin />\n"

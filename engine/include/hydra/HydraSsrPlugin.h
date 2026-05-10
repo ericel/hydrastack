@@ -62,6 +62,14 @@ struct SsrRenderResult {
     std::string html;
     int status = 200;
     std::unordered_map<std::string, std::string> headers;
+    std::string title;
+    std::string description;
+    std::string canonicalUrl;
+    std::string robots;
+    std::string ogType;
+    std::string imageUrl;
+    std::string siteName;
+    std::string twitterCard;
 };
 
 class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
@@ -107,6 +115,13 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
 
     std::string ssrBundlePath_;
     std::string shellTitle_ = "HydraStack";
+    std::string shellDescription_;
+    std::string shellCanonicalUrl_;
+    std::string shellRobots_;
+    std::string shellOgType_ = "website";
+    std::string shellImageUrl_;
+    std::string shellSiteName_;
+    std::string shellTwitterCard_;
     std::string cssPath_;
     std::string clientJsPath_;
     std::string assetManifestPath_ = "./public/assets/manifest.json";

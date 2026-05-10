@@ -8,6 +8,13 @@ namespace hydra {
 
 struct HtmlShellAssets {
     std::string title = "HydraStack";
+    std::string description;
+    std::string canonicalUrl;
+    std::string robots;
+    std::string ogType = "website";
+    std::string imageUrl;
+    std::string siteName;
+    std::string twitterCard;
     std::string cssPath = "/assets/app.css";
     std::string clientJsPath = "/assets/client.js";
     std::string hmrClientPath;

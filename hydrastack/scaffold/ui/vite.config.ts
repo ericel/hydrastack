@@ -654,6 +654,29 @@ function escapeCssClassToken(value: string): string {
   return value.replace(/([^a-zA-Z0-9_-])/g, "\\$1");
 }
 
+// Convert CSS hex-escape sequences (\<1-6 hex digits> with an optional trailing
+// space) to single-char backslash escapes (\<char>) for the printable ASCII
+// chars that have a single-char escape form. Both forms are equivalent per
+// CSS3 spec — they match the same character in a class attribute — but
+// Tailwind v3+ emits the hex form for commas (\2c ), `#` (\23 ), etc., while
+// our escapeCssClassToken above emits the single-char form (\,, \#). Without
+// this normalisation, the rewriteSelectors regex never matches Tailwind-
+// generated arbitrary-value selectors that contain commas/hashes/etc., so the
+// CSS keeps the original Tailwind selector while the HTML emits the
+// obfuscated class — a guaranteed unstyled element.
+function normalizeCssEscapes(css: string): string {
+  return css.replace(/\\([0-9a-fA-F]{1,6}) ?/g, (match, hex) => {
+    const code = parseInt(hex, 16);
+    if (code <= 0x20 || code > 0x7e) return match;
+    const ch = String.fromCharCode(code);
+    // Single-char backslash escape is only valid for non-alphanumerics; for
+    // hex digits like \0061 ("a") we MUST keep the hex form or the selector
+    // changes meaning.
+    if (/[a-zA-Z0-9]/.test(ch)) return match;
+    return "\\" + ch;
+  });
+}
+
 function rewriteSelectors(selector: string, classMap: Map<string, string>): string {
   let rewritten = selector;
   const orderedEntries = Array.from(classMap.entries()).sort((left, right) => {
@@ -673,7 +696,10 @@ function rewriteSelectors(selector: string, classMap: Map<string, string>): stri
 }
 
 function rewriteCssClasses(css: string, classMap: Map<string, string>): string {
-  const root = postcss.parse(css);
+  // Normalise hex-escape sequences before parsing so all selectors use a
+  // consistent single-char backslash escape form that rewriteSelectors can
+  // match. See normalizeCssEscapes() for details.
+  const root = postcss.parse(normalizeCssEscapes(css));
   root.walkRules((rule) => {
     rule.selector = rewriteSelectors(rule.selector, classMap);
   });

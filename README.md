@@ -232,7 +232,7 @@ Notes:
   - `HYDRA_BUILD_DIR=/path/to/build`
   - `HYDRA_CONFIG_PATH=/path/to/config.dev.json`
 - You can override expected ports for startup checks:
-  - `HYDRA_APP_PORT=8070`
+  - `HYDRA_APP_PORT=8080`
   - `HYDRA_VITE_PORT=5174`
 - Dev output is concise by default (focus on app URL and rebuild flow).
   - Full Vite terminal output: `HYDRA_DEV_VERBOSE=1 ./scripts/dev.sh`
@@ -300,7 +300,7 @@ HydraStack uses an isolate pool with RAII leases.
 Quick load check:
 
 ```bash
-ab -n 200 -c 20 http://127.0.0.1:8070/
+ab -n 200 -c 20 http://127.0.0.1:8080/
 ```
 
 Contention and isolate-state proof checks:
@@ -308,14 +308,14 @@ Contention and isolate-state proof checks:
 1. Start with serialized pool:
    set `pool_size` to `1` in `demo/config.json`, run `./build/hydra_demo`, then:
 ```bash
-ab -k -n 5000 -c 200 "http://127.0.0.1:8070/?burn_ms=3"
+ab -k -n 5000 -c 200 "http://127.0.0.1:8080/?burn_ms=3"
 ```
 2. Switch to parallel pool:
    set `pool_size` to `4` (or thread count), restart, run the same command.
 3. Isolate global persistence check:
 ```bash
-curl -s "http://127.0.0.1:8070/?counter=1" | rg "Isolate counter"
-curl -s "http://127.0.0.1:8070/?counter=1" | rg "Isolate counter"
+curl -s "http://127.0.0.1:8080/?counter=1" | rg "Isolate counter"
+curl -s "http://127.0.0.1:8080/?counter=1" | rg "Isolate counter"
 ```
 With `pool_size=1`, the counter should increase monotonically between requests.
 
@@ -344,9 +344,9 @@ To force observable isolate contention and validate acquire-wait:
 1. Run with `threads_num > pool_size` (for example `threads_num=16`, `pool_size=4`) and `acquire_timeout_ms=0`.
 2. Capture metrics before and after a burn run, then compare deltas:
 ```bash
-curl -s http://127.0.0.1:8070/__hydra/metrics > /tmp/hydra-metrics-before.txt
-ab -k -n 20000 -c 100 "http://127.0.0.1:8070/?burn_ms=20"
-curl -s http://127.0.0.1:8070/__hydra/metrics > /tmp/hydra-metrics-after.txt
+curl -s http://127.0.0.1:8080/__hydra/metrics > /tmp/hydra-metrics-before.txt
+ab -k -n 20000 -c 100 "http://127.0.0.1:8080/?burn_ms=20"
+curl -s http://127.0.0.1:8080/__hydra/metrics > /tmp/hydra-metrics-after.txt
 ```
 3. Inspect delta changes in `hydra_acquire_wait_ms_(bucket|sum|count)`, `hydra_request_total_ms_(bucket|sum|count)`, and `hydra_requests_by_code_total`.
 

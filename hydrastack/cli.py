@@ -440,6 +440,19 @@ def resolve_mode_paths(
     config_arg: str | None,
 ) -> Tuple[Path, Path]:
     def default_config_for_mode() -> Path:
+        # For --prod, prefer an explicit `*.prod.json` if the project ships one
+        # (downstream apps frequently want a separate Cloud Run / packaged-prod
+        # config that differs in port, paths, plugin tunables etc. from the
+        # baseline `app/config.json` they use locally). This is additive — apps
+        # that follow the legacy hydrastack convention where the suffix-less
+        # `app/config.json` *is* the prod config still resolve identically.
+        if mode == "prod":
+            for candidate in (
+                root / "app/config.prod.json",
+                root / "demo/config.prod.json",
+            ):
+                if candidate.exists():
+                    return candidate
         preferred = root / ("app/config.json" if mode == "prod" else "app/config.dev.json")
         legacy = root / ("demo/config.json" if mode == "prod" else "demo/config.dev.json")
         if preferred.exists() or not legacy.exists():
@@ -1262,7 +1275,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     dev_cmd.add_argument(
         "--config",
-        help="Config file path (defaults: app/config.dev.json for dev, app/config.json for prod; demo/* also supported)",
+        help="Config file path (defaults — dev: app/config.dev.json; prod: app/config.prod.json if present, else app/config.json; demo/* also supported)",
     )
     dev_cmd.set_defaults(func=cmd_dev)
 
@@ -1314,7 +1327,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_cmd.add_argument(
         "--config",
-        help="Config file path (defaults: app/config.dev.json for dev, app/config.json for prod; demo/* also supported)",
+        help="Config file path (defaults — dev: app/config.dev.json; prod: app/config.prod.json if present, else app/config.json; demo/* also supported)",
     )
     run_cmd.add_argument(
         "extra_args",

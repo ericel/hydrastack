@@ -2,7 +2,7 @@
   "listeners": [
     {
       "address": "0.0.0.0",
-      "port": 8070,
+      "port": 8080,
       "https": false
     }
   ],
@@ -31,7 +31,7 @@
         "client_manifest_entry": "src/entry-client.tsx",
         "pool_size": 4,
         "acquire_timeout_ms": 200,
-        "render_timeout_ms": 50,
+        "render_timeout_ms": 5000,
         "i18n": {
           "defaultLocale": "en",
           "supportedLocales": ["en", "fr", "ko"],

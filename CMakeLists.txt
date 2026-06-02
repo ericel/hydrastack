@@ -52,6 +52,9 @@ else()
   message(FATAL_ERROR "Unable to find a supported jsoncpp target")
 endif()
 
+get_target_property(HYDRA_JSONCPP_INCLUDE_DIRS ${HYDRA_JSONCPP_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
+
+get_target_property(HYDRA_DROGON_INCLUDE_DIRS ${HYDRA_DROGON_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
 # v0.1 V8 discovery contract.
 # Explicit -DV8_INCLUDE_DIR/-DV8_LIBRARIES wins.
 # If missing, we try env vars and common install locations.
@@ -161,6 +164,8 @@ target_include_directories(hydra_engine
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     $<BUILD_INTERFACE:${V8_INCLUDE_DIR}>
     $<INSTALL_INTERFACE:${V8_INCLUDE_DIR}>
+    ${HYDRA_DROGON_INCLUDE_DIRS}
+    ${HYDRA_JSONCPP_INCLUDE_DIRS}
 )
 
 if(HYDRA_V8_DEFINITIONS)

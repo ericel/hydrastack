@@ -122,7 +122,7 @@ Notes:
   - `HYDRA_BUILD_DIR=/path/to/build`
   - `HYDRA_CONFIG_PATH=/path/to/config.dev.json`
 - You can override expected ports for startup checks:
-  - `HYDRA_APP_PORT=8070`
+  - `HYDRA_APP_PORT=8080`
   - `HYDRA_VITE_PORT=5174`
 - `main.cc` also supports `HYDRA_CONFIG` env var or a CLI arg:
   - `HYDRA_CONFIG=app/config.dev.json ./build/hydra_demo`
@@ -183,7 +183,7 @@ HydraStack uses an isolate pool with RAII leases.
 Quick load check:
 
 ```bash
-ab -n 200 -c 20 http://127.0.0.1:8070/
+ab -n 200 -c 20 http://127.0.0.1:8080/
 ```
 
 Contention and isolate-state proof checks:
@@ -191,14 +191,14 @@ Contention and isolate-state proof checks:
 1. Start with serialized pool:
    set `pool_size` to `1` in `app/config.json`, run `./build/hydra_demo`, then:
 ```bash
-ab -k -n 5000 -c 200 "http://127.0.0.1:8070/?burn_ms=3"
+ab -k -n 5000 -c 200 "http://127.0.0.1:8080/?burn_ms=3"
 ```
 2. Switch to parallel pool:
    set `pool_size` to `4` (or thread count), restart, run the same command.
 3. Isolate global persistence check:
 ```bash
-curl -s "http://127.0.0.1:8070/?counter=1" | rg "Isolate counter"
-curl -s "http://127.0.0.1:8070/?counter=1" | rg "Isolate counter"
+curl -s "http://127.0.0.1:8080/?counter=1" | rg "Isolate counter"
+curl -s "http://127.0.0.1:8080/?counter=1" | rg "Isolate counter"
 ```
 With `pool_size=1`, the counter should increase monotonically between requests.
 

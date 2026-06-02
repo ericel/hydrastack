@@ -233,7 +233,7 @@ def main() -> int:
         default=None,
         help="source config template path (default: demo/config.dev.json)",
     )
-    parser.add_argument("--port", type=int, default=int(os.environ.get("HYDRA_TEST_PORT", "18070")))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("HYDRA_TEST_PORT", "18080")))
     args = parser.parse_args()
 
     root = args.root.resolve()

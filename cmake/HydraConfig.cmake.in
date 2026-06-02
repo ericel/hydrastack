@@ -1,4 +1,45 @@
 @PACKAGE_INIT@
 
+include(CMakeFindDependencyMacro)
+
+find_dependency(Drogon CONFIG QUIET)
+if(NOT Drogon_FOUND)
+	find_dependency(drogon CONFIG REQUIRED)
+endif()
+
+find_dependency(JsonCpp CONFIG QUIET)
+if(NOT JsonCpp_FOUND)
+	find_dependency(jsoncpp CONFIG REQUIRED)
+endif()
+
+if(TARGET JsonCpp::JsonCpp AND NOT TARGET jsoncpp_lib)
+	add_library(jsoncpp_lib INTERFACE IMPORTED)
+	target_link_libraries(jsoncpp_lib INTERFACE JsonCpp::JsonCpp)
+elseif(TARGET jsoncpp::jsoncpp AND NOT TARGET jsoncpp_lib)
+	add_library(jsoncpp_lib INTERFACE IMPORTED)
+	target_link_libraries(jsoncpp_lib INTERFACE jsoncpp::jsoncpp)
+endif()
+
 include("${CMAKE_CURRENT_LIST_DIR}/HydraStackTargets.cmake")
+
+if(TARGET HydraStack::hydra_engine)
+	set(_hydra_public_dependency_targets)
+	if(TARGET Drogon::Drogon)
+		list(APPEND _hydra_public_dependency_targets Drogon::Drogon)
+	elseif(TARGET drogon::drogon)
+		list(APPEND _hydra_public_dependency_targets drogon::drogon)
+	endif()
+	if(TARGET JsonCpp::JsonCpp)
+		list(APPEND _hydra_public_dependency_targets JsonCpp::JsonCpp)
+	elseif(TARGET jsoncpp::jsoncpp)
+		list(APPEND _hydra_public_dependency_targets jsoncpp::jsoncpp)
+	elseif(TARGET jsoncpp_lib)
+		list(APPEND _hydra_public_dependency_targets jsoncpp_lib)
+	endif()
+	if(_hydra_public_dependency_targets)
+		set_property(TARGET HydraStack::hydra_engine APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${_hydra_public_dependency_targets})
+	endif()
+	unset(_hydra_public_dependency_targets)
+endif()
+
 check_required_components(HydraStack)

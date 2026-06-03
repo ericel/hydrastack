@@ -54,10 +54,6 @@ else()
   message(FATAL_ERROR "Unable to find a supported jsoncpp target")
 endif()
 
-get_target_property(HYDRA_JSONCPP_INCLUDE_DIRS ${HYDRA_JSONCPP_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
-
-get_target_property(HYDRA_DROGON_INCLUDE_DIRS ${HYDRA_DROGON_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
-
 add_library(hydra_shell_engine
   engine/src/HydraShellPlugin.cc
   engine/src/HtmlShell.cc
@@ -68,8 +64,6 @@ target_include_directories(hydra_shell_engine
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/engine/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-    ${HYDRA_DROGON_INCLUDE_DIRS}
-    ${HYDRA_JSONCPP_INCLUDE_DIRS}
 )
 
 target_link_libraries(hydra_shell_engine
@@ -226,8 +220,6 @@ if(HYDRA_ENABLE_V8)
       $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
       $<BUILD_INTERFACE:${V8_INCLUDE_DIR}>
       $<INSTALL_INTERFACE:${V8_INCLUDE_DIR}>
-      ${HYDRA_DROGON_INCLUDE_DIRS}
-      ${HYDRA_JSONCPP_INCLUDE_DIRS}
   )
 
   if(HYDRA_V8_DEFINITIONS)

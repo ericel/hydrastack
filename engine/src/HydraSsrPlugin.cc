@@ -679,6 +679,10 @@ std::optional<SsrRenderResult> tryParseSsrEnvelope(const std::string &renderOutp
 
 }  // namespace
 
+void V8IsolatePoolDeleter::operator()(V8IsolatePool *pool) const noexcept {
+    delete pool;
+}
+
 HydraSsrPlugin::~HydraSsrPlugin() = default;
 
 std::string HydraSsrPlugin::buildRouteUrl(const drogon::HttpRequestPtr &req,
@@ -960,9 +964,9 @@ std::string HydraSsrPlugin::resolveRequestId(const drogon::HttpRequestPtr &req) 
     return "hydra-" + std::to_string(generated);
 }
 
-V8SsrRuntime::BridgeResponse HydraSsrPlugin::dispatchApiBridge(
-    const V8SsrRuntime::BridgeRequest &request) const {
-    V8SsrRuntime::BridgeResponse response;
+ApiBridgeResponse HydraSsrPlugin::dispatchApiBridge(
+    const ApiBridgeRequest &request) const {
+    ApiBridgeResponse response;
     if (!apiBridgeEnabled_) {
         response.status = 503;
         response.body = "Hydra API bridge disabled";
@@ -1018,14 +1022,9 @@ V8SsrRuntime::BridgeResponse HydraSsrPlugin::dispatchApiBridge(
         return response;
     }
 
-    ApiBridgeRequest apiRequest;
-    apiRequest.method = normalizedMethod;
-    apiRequest.path = request.path;
-    apiRequest.query = request.query;
-    apiRequest.body = request.body;
-    apiRequest.headers = request.headers;
-
     try {
+        auto apiRequest = request;
+        apiRequest.method = normalizedMethod;
         const auto apiResponse = handler(apiRequest);
         response.status = apiResponse.status;
         response.body = apiResponse.body;
@@ -1439,13 +1438,25 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
 
     V8Platform::initialize();
     try {
-        isolatePool_ = std::make_unique<V8IsolatePool>(
+        isolatePool_.reset(new V8IsolatePool(
             isolatePoolSize_,
             ssrBundlePath_,
             renderTimeoutMs_,
             [this](const V8SsrRuntime::BridgeRequest &request) {
-                return dispatchApiBridge(request);
-            });
+                ApiBridgeRequest apiRequest;
+                apiRequest.method = request.method;
+                apiRequest.path = request.path;
+                apiRequest.query = request.query;
+                apiRequest.body = request.body;
+                apiRequest.headers = request.headers;
+
+                const auto apiResponse = dispatchApiBridge(apiRequest);
+                V8SsrRuntime::BridgeResponse response;
+                response.status = apiResponse.status;
+                response.body = apiResponse.body;
+                response.headers = apiResponse.headers;
+                return response;
+            }));
     } catch (...) {
         V8Platform::shutdown();
         throw;

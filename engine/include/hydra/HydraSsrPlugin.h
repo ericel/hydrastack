@@ -1,7 +1,6 @@
 #pragma once
 
 #include "hydra/Config.h"
-#include "hydra/V8IsolatePool.h"
 
 #include <drogon/HttpRequest.h>
 #include <drogon/plugins/Plugin.h>
@@ -20,6 +19,12 @@
 #include <vector>
 
 namespace hydra {
+
+class V8IsolatePool;
+
+struct V8IsolatePoolDeleter {
+    void operator()(V8IsolatePool *pool) const noexcept;
+};
 
 struct RenderOptions {
     std::string urlOverride;
@@ -109,8 +114,8 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
     void observeRenderLatency(double valueMs) const;
     void observeRequestLatency(double valueMs) const;
     void observeRequestCode(int statusCode) const;
-    [[nodiscard]] V8SsrRuntime::BridgeResponse dispatchApiBridge(
-        const V8SsrRuntime::BridgeRequest &request) const;
+    [[nodiscard]] ApiBridgeResponse dispatchApiBridge(
+        const ApiBridgeRequest &request) const;
     void registerDevProxyRoutes();
 
     std::string ssrBundlePath_;
@@ -202,7 +207,7 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
     mutable std::mutex apiBridgeMutex_;
     ApiBridgeHandler apiBridgeHandler_;
 
-    std::unique_ptr<V8IsolatePool> isolatePool_;
+    std::unique_ptr<V8IsolatePool, V8IsolatePoolDeleter> isolatePool_;
 };
 
 }  // namespace hydra

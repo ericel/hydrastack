@@ -195,6 +195,12 @@ add_library(hydra_engine
 )
 add_library(HydraStack::hydra_engine ALIAS hydra_engine)
 
+add_library(hydra_shell_engine
+  engine/src/HydraShellPlugin.cc
+  engine/src/HtmlShell.cc
+)
+add_library(HydraStack::hydra_shell_engine ALIAS hydra_shell_engine)
+
 target_include_directories(hydra_engine
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/engine/include>
@@ -214,6 +220,20 @@ target_link_libraries(hydra_engine
     ${HYDRA_DROGON_TARGET}
     ${HYDRA_JSONCPP_TARGET}
     ${HYDRA_V8_LINK_LIBRARIES}
+)
+
+target_include_directories(hydra_shell_engine
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/engine/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    ${HYDRA_DROGON_INCLUDE_DIRS}
+    ${HYDRA_JSONCPP_INCLUDE_DIRS}
+)
+
+target_link_libraries(hydra_shell_engine
+  PUBLIC
+    ${HYDRA_DROGON_TARGET}
+    ${HYDRA_JSONCPP_TARGET}
 )
 
 if(HYDRA_BUILD_DEMO)
@@ -292,7 +312,7 @@ if(BUILD_TESTING)
 endif()
 
 install(
-  TARGETS hydra_engine
+  TARGETS hydra_engine hydra_shell_engine
   EXPORT HydraStackTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

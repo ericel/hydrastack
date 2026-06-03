@@ -3,6 +3,7 @@ project(HydraStack VERSION 0.1.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+include(CheckCXXSourceCompiles)
 include(CTest)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -90,28 +91,28 @@ if(HYDRA_V8_AUTODETECT AND (NOT V8_INCLUDE_DIR OR NOT V8_LIBRARIES))
   endif()
 
   if(NOT V8_LIBRARIES)
-    find_library(HYDRA_V8_MONOLITH_LIBRARY
-      NAMES v8_monolith
+    find_library(HYDRA_V8_LIBRARY
+      NAMES v8
       HINTS ${HYDRA_V8_HINT_ROOTS}
       PATH_SUFFIXES lib lib64
     )
-    if(HYDRA_V8_MONOLITH_LIBRARY)
-      set(V8_LIBRARIES "${HYDRA_V8_MONOLITH_LIBRARY}" CACHE STRING "V8 libraries" FORCE)
-      message(STATUS "HydraStack auto-detected V8 library: ${HYDRA_V8_MONOLITH_LIBRARY}")
+    find_library(HYDRA_V8_LIBPLATFORM_LIBRARY
+      NAMES v8_libplatform
+      HINTS ${HYDRA_V8_HINT_ROOTS}
+      PATH_SUFFIXES lib lib64
+    )
+    if(HYDRA_V8_LIBRARY AND HYDRA_V8_LIBPLATFORM_LIBRARY)
+      set(V8_LIBRARIES "${HYDRA_V8_LIBRARY};${HYDRA_V8_LIBPLATFORM_LIBRARY}" CACHE STRING "V8 libraries" FORCE)
+      message(STATUS "HydraStack auto-detected V8 libraries: ${V8_LIBRARIES}")
     else()
-      find_library(HYDRA_V8_LIBRARY
-        NAMES v8
+      find_library(HYDRA_V8_MONOLITH_LIBRARY
+        NAMES v8_monolith
         HINTS ${HYDRA_V8_HINT_ROOTS}
         PATH_SUFFIXES lib lib64
       )
-      find_library(HYDRA_V8_LIBPLATFORM_LIBRARY
-        NAMES v8_libplatform
-        HINTS ${HYDRA_V8_HINT_ROOTS}
-        PATH_SUFFIXES lib lib64
-      )
-      if(HYDRA_V8_LIBRARY AND HYDRA_V8_LIBPLATFORM_LIBRARY)
-        set(V8_LIBRARIES "${HYDRA_V8_LIBRARY};${HYDRA_V8_LIBPLATFORM_LIBRARY}" CACHE STRING "V8 libraries" FORCE)
-        message(STATUS "HydraStack auto-detected V8 libraries: ${V8_LIBRARIES}")
+      if(HYDRA_V8_MONOLITH_LIBRARY)
+        set(V8_LIBRARIES "${HYDRA_V8_MONOLITH_LIBRARY}" CACHE STRING "V8 libraries" FORCE)
+        message(STATUS "HydraStack auto-detected V8 library: ${HYDRA_V8_MONOLITH_LIBRARY}")
       endif()
     endif()
   endif()
@@ -133,6 +134,57 @@ if(NOT V8_INCLUDE_DIR OR NOT V8_LIBRARIES)
     "or install V8 in a standard path and keep HYDRA_V8_AUTODETECT=ON.")
 endif()
 
+set(HYDRA_V8_DEFINITIONS "")
+if(V8_COMPILE_DEFINITIONS)
+  list(APPEND HYDRA_V8_DEFINITIONS ${V8_COMPILE_DEFINITIONS})
+elseif(APPLE AND V8_INCLUDE_DIR MATCHES "/opt/homebrew/.*/v8/include")
+  list(APPEND HYDRA_V8_DEFINITIONS V8_COMPRESS_POINTERS)
+  message(STATUS "HydraStack detected Homebrew V8; applying defs: V8_COMPRESS_POINTERS")
+elseif(V8_LIBRARIES MATCHES "libv8_monolith")
+  # Linux convention: a v8_monolith static archive built with the recommended gn args
+  # (v8_monolithic=true v8_enable_pointer_compression=true v8_enable_sandbox=true). The
+  # embedder MUST be compiled with V8_COMPRESS_POINTERS / V8_ENABLE_SANDBOX or it
+  # crashes at startup with "Embedder-vs-V8 build configuration mismatch".
+  list(APPEND HYDRA_V8_DEFINITIONS V8_COMPRESS_POINTERS V8_ENABLE_SANDBOX)
+  message(STATUS "HydraStack detected V8 monolith static archive; applying defs: V8_COMPRESS_POINTERS;V8_ENABLE_SANDBOX")
+endif()
+
+set(HYDRA_V8_LINK_LIBRARIES ${V8_LIBRARIES})
+if(APPLE)
+  find_library(HYDRA_SECURITY_FRAMEWORK Security)
+  if(HYDRA_SECURITY_FRAMEWORK)
+    list(APPEND HYDRA_V8_LINK_LIBRARIES ${HYDRA_SECURITY_FRAMEWORK})
+  endif()
+endif()
+
+set(CMAKE_REQUIRED_INCLUDES "${V8_INCLUDE_DIR}")
+set(CMAKE_REQUIRED_LIBRARIES ${HYDRA_V8_LINK_LIBRARIES})
+set(CMAKE_REQUIRED_DEFINITIONS)
+foreach(HYDRA_V8_DEFINITION IN LISTS HYDRA_V8_DEFINITIONS)
+  list(APPEND CMAKE_REQUIRED_DEFINITIONS "-D${HYDRA_V8_DEFINITION}")
+endforeach()
+check_cxx_source_compiles("
+  #include <memory>
+  #include <libplatform/libplatform.h>
+  #include <v8.h>
+
+  int main() {
+    auto platform = v8::platform::NewDefaultPlatform();
+    return platform ? 0 : 1;
+  }
+" HYDRA_V8_LINK_CHECK_PASSED)
+unset(CMAKE_REQUIRED_INCLUDES)
+unset(CMAKE_REQUIRED_LIBRARIES)
+unset(CMAKE_REQUIRED_DEFINITIONS)
+
+if(NOT HYDRA_V8_LINK_CHECK_PASSED)
+  message(FATAL_ERROR
+    "Configured V8 failed HydraStack's compile/link check. On macOS, Chromium-built "
+    "libv8_monolith.a archives often require a matching Chromium libc++/Temporal "
+    "dependency set and cannot be consumed as a standalone system library. Install "
+    "a compatible V8 package or pass a complete V8_LIBRARIES list.")
+endif()
+
 add_library(hydra_engine
   engine/src/Config.cc
   engine/src/HydraSsrPlugin.cc
@@ -142,21 +194,6 @@ add_library(hydra_engine
   engine/src/V8SsrRuntime.cc
 )
 add_library(HydraStack::hydra_engine ALIAS hydra_engine)
-
-set(HYDRA_V8_DEFINITIONS "")
-if(V8_COMPILE_DEFINITIONS)
-  list(APPEND HYDRA_V8_DEFINITIONS ${V8_COMPILE_DEFINITIONS})
-elseif(APPLE AND V8_INCLUDE_DIR MATCHES "/opt/homebrew/.*/v8/include")
-  list(APPEND HYDRA_V8_DEFINITIONS V8_COMPRESS_POINTERS V8_ENABLE_SANDBOX)
-  message(STATUS "HydraStack detected Homebrew V8; applying defs: V8_COMPRESS_POINTERS;V8_ENABLE_SANDBOX")
-elseif(V8_LIBRARIES MATCHES "libv8_monolith")
-  # Linux convention: a v8_monolith static archive built with the recommended gn args
-  # (v8_monolithic=true v8_enable_pointer_compression=true v8_enable_sandbox=true). The
-  # embedder MUST be compiled with V8_COMPRESS_POINTERS / V8_ENABLE_SANDBOX or it
-  # crashes at startup with "Embedder-vs-V8 build configuration mismatch".
-  list(APPEND HYDRA_V8_DEFINITIONS V8_COMPRESS_POINTERS V8_ENABLE_SANDBOX)
-  message(STATUS "HydraStack detected V8 monolith static archive; applying defs: V8_COMPRESS_POINTERS;V8_ENABLE_SANDBOX")
-endif()
 
 target_include_directories(hydra_engine
   PUBLIC
@@ -176,7 +213,7 @@ target_link_libraries(hydra_engine
   PUBLIC
     ${HYDRA_DROGON_TARGET}
     ${HYDRA_JSONCPP_TARGET}
-    ${V8_LIBRARIES}
+    ${HYDRA_V8_LINK_LIBRARIES}
 )
 
 if(HYDRA_BUILD_DEMO)

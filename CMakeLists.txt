@@ -197,11 +197,22 @@ if(HYDRA_ENABLE_V8)
   unset(CMAKE_REQUIRED_DEFINITIONS)
 
   if(NOT HYDRA_V8_LINK_CHECK_PASSED)
+    if(APPLE)
+      set(HYDRA_V8_LINK_CHECK_PLATFORM "macOS")
+    else()
+      set(HYDRA_V8_LINK_CHECK_PLATFORM "Linux")
+    endif()
+    string(REPLACE ";" ", " HYDRA_V8_REQUIRED_LIBRARIES_TEXT "${HYDRA_V8_LINK_LIBRARIES}")
+    string(REPLACE ";" ", " HYDRA_V8_REQUIRED_DEFINITIONS_TEXT "${HYDRA_V8_DEFINITIONS}")
     message(FATAL_ERROR
-      "Configured V8 failed HydraStack's compile/link check. On macOS, Chromium-built "
-      "libv8_monolith.a archives often require a matching Chromium libc++/Temporal "
-      "dependency set and cannot be consumed as a standalone system library. Install "
-      "a compatible V8 package or pass a complete V8_LIBRARIES list.")
+      "Configured V8 failed HydraStack's compile/link check on ${HYDRA_V8_LINK_CHECK_PLATFORM}. "
+      "This usually means the archive is missing a required link dependency or the embedder "
+      "compile definitions do not match V8's build flags.\n"
+      "  V8_INCLUDE_DIR: ${V8_INCLUDE_DIR}\n"
+      "  V8_LIBRARIES: ${HYDRA_V8_REQUIRED_LIBRARIES_TEXT}\n"
+      "  V8_COMPILE_DEFINITIONS: ${HYDRA_V8_REQUIRED_DEFINITIONS_TEXT}\n"
+      "Pass a complete V8_LIBRARIES list, set V8_COMPILE_DEFINITIONS to the right values, "
+      "or configure -DHYDRA_ENABLE_V8=OFF.")
   endif()
 
   add_library(hydra_engine

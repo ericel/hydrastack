@@ -30,7 +30,7 @@ struct HydraSsrPluginConfig {
     std::string assetPublicPrefix = "/assets";
     std::string clientManifestEntry = "src/entry-client.tsx";
     std::uint64_t acquireTimeoutMs = 0;
-    std::uint64_t renderTimeoutMs = 50;
+    std::uint64_t renderTimeoutMs = 250;
     bool wrapFragment = true;
     bool apiBridgeEnabled = true;
     bool logRenderMetrics = true;

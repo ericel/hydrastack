@@ -2001,4 +2001,140 @@ std::string HydraSsrPlugin::metricsPrometheus() const {
     return out.str();
 }
 
+Json::Value HydraSsrPlugin::observatoryReport() const {
+    const auto snapshot = metricsSnapshot();
+    const auto totalRequests = snapshot.requestsOk + snapshot.requestsFail;
+    const auto poolInUse = isolatePool_ ? isolatePool_->inUseCount() : 0;
+    const auto poolSize = isolatePool_ ? isolatePool_->size() : 0;
+
+    const auto avgMs = [](std::uint64_t totalUs, std::uint64_t count) {
+        if (count == 0) {
+            return 0.0;
+        }
+        return (static_cast<double>(totalUs) / 1000.0) / static_cast<double>(count);
+    };
+
+    Json::Value report(Json::objectValue);
+    report["service"] = "HydraStack";
+    report["mode"] = "v8";
+
+    Json::Value config(Json::objectValue);
+    config["render_timeout_ms"] = static_cast<Json::UInt64>(renderTimeoutMs_);
+    config["acquire_timeout_ms"] = static_cast<Json::UInt64>(isolateAcquireTimeoutMs_);
+    config["pool_size"] = static_cast<Json::UInt64>(isolatePoolSize_);
+    report["config"] = std::move(config);
+
+    Json::Value metrics(Json::objectValue);
+    metrics["hydra_render_timeouts_total"] =
+        static_cast<Json::UInt64>(snapshot.renderTimeouts);
+    metrics["hydra_render_errors_total"] =
+        static_cast<Json::UInt64>(snapshot.renderErrors);
+    metrics["hydra_pool_timeouts_total"] =
+        static_cast<Json::UInt64>(snapshot.poolTimeouts);
+    metrics["hydra_recycles_total"] =
+        static_cast<Json::UInt64>(snapshot.runtimeRecycles);
+    metrics["hydra_pool_in_use"] = static_cast<Json::UInt64>(poolInUse);
+    metrics["hydra_pool_size"] = static_cast<Json::UInt64>(poolSize);
+    metrics["hydra_requests_ok_total"] =
+        static_cast<Json::UInt64>(snapshot.requestsOk);
+    metrics["hydra_requests_fail_total"] =
+        static_cast<Json::UInt64>(snapshot.requestsFail);
+    report["metrics"] = std::move(metrics);
+
+    Json::Value latency(Json::objectValue);
+    latency["hydra_render_latency_avg_ms"] =
+        avgMs(snapshot.totalRenderUs, snapshot.requestsOk);
+    latency["hydra_acquire_wait_avg_ms"] =
+        avgMs(snapshot.totalAcquireWaitUs, totalRequests);
+    latency["hydra_request_total_avg_ms"] =
+        avgMs(snapshot.totalRequestUs, totalRequests);
+    latency["hydra_render_latency_total_ms"] =
+        static_cast<Json::UInt64>(snapshot.totalRenderMs);
+    latency["hydra_acquire_wait_total_ms"] =
+        static_cast<Json::UInt64>(snapshot.totalAcquireWaitMs);
+    latency["hydra_request_total_ms"] =
+        static_cast<Json::UInt64>(snapshot.totalRequestMs);
+    report["latency"] = std::move(latency);
+
+    Json::Value recommendations(Json::arrayValue);
+    const auto addRecommendation = [&recommendations](const char *level,
+                                                      const char *metric,
+                                                      const char *summary,
+                                                      const char *action) {
+        Json::Value item(Json::objectValue);
+        item["level"] = level;
+        item["metric"] = metric;
+        item["summary"] = summary;
+        item["action"] = action;
+        recommendations.append(std::move(item));
+    };
+
+    if (totalRequests == 0) {
+        addRecommendation(
+            "info",
+            "hydra_requests_total",
+            "No SSR traffic has been recorded in this process yet.",
+            "Recheck after production traffic reaches this instance.");
+    }
+    if (snapshot.renderTimeouts > 0) {
+        addRecommendation(
+            "critical",
+            "hydra_render_timeouts_total",
+            "SSR renders are exceeding the configured render timeout.",
+            "Move expensive route work out of SSR, reduce synchronous render cost, or raise render_timeout_ms after checking p95/p99 render latency.");
+    }
+    if (snapshot.renderErrors > 0) {
+        addRecommendation(
+            "warning",
+            "hydra_render_errors_total",
+            "SSR render failures have been recorded.",
+            "Inspect HydraStack render logs by request id and verify the SSR bundle handles the affected routes.");
+    }
+    if (snapshot.poolTimeouts > 0) {
+        addRecommendation(
+            "warning",
+            "hydra_pool_timeouts_total",
+            "Requests timed out while waiting for a V8 runtime.",
+            "Increase pool_size if CPU and memory allow, or reduce SSR latency so runtimes return to the pool faster.");
+    }
+    if (poolSize > 0 && poolInUse >= poolSize) {
+        addRecommendation(
+            "warning",
+            "hydra_pool_in_use",
+            "All V8 runtimes are currently leased.",
+            "Watch hydra_acquire_wait_ms and consider increasing pool_size if this persists under normal traffic.");
+    }
+    const auto renderAvgMs = avgMs(snapshot.totalRenderUs, snapshot.requestsOk);
+    if (renderTimeoutMs_ > 0 &&
+        renderAvgMs >= static_cast<double>(renderTimeoutMs_) * 0.8) {
+        addRecommendation(
+            "warning",
+            "hydra_render_latency_ms",
+            "Average SSR render latency is close to the configured timeout.",
+            "Profile heavy routes and keep gateway/network-dependent work out of synchronous SSR.");
+    }
+    const auto acquireAvgMs = avgMs(snapshot.totalAcquireWaitUs, totalRequests);
+    if (acquireAvgMs >= 25.0) {
+        addRecommendation(
+            "warning",
+            "hydra_acquire_wait_ms",
+            "Average V8 runtime acquisition wait is elevated.",
+            "Check pool saturation and request concurrency before increasing traffic to this instance.");
+    }
+    if (recommendations.empty()) {
+        addRecommendation(
+            "ok",
+            "hydra_runtime",
+            "HydraStack SSR metrics are within the default operating envelope.",
+            "Continue watching p95/p99 latency and timeout counters during deploys.");
+    }
+
+    report["recommendations"] = std::move(recommendations);
+    report["status"] = snapshot.renderTimeouts > 0 || snapshot.renderErrors > 0 ||
+                                snapshot.poolTimeouts > 0
+                            ? "attention"
+                            : "ok";
+    return report;
+}
+
 }  // namespace hydra

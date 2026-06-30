@@ -373,7 +373,7 @@ Recommended plugin config:
     "client_manifest_entry": "src/entry-client.tsx",
     "pool_size": 4,
     "acquire_timeout_ms": 200,
-    "render_timeout_ms": 50,
+    "render_timeout_ms": 250,
     "wrap_fragment": true
   }
 }

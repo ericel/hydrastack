@@ -100,6 +100,7 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
 
     [[nodiscard]] HydraMetricsSnapshot metricsSnapshot() const;
     [[nodiscard]] std::string metricsPrometheus() const;
+    [[nodiscard]] Json::Value observatoryReport() const;
 
     void setApiBridgeHandler(ApiBridgeHandler handler);
 
@@ -134,7 +135,7 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
     std::string clientManifestEntry_ = "src/entry-client.tsx";
     std::size_t isolatePoolSize_ = 0;
     std::uint64_t isolateAcquireTimeoutMs_ = 0;
-    std::uint64_t renderTimeoutMs_ = 50;
+    std::uint64_t renderTimeoutMs_ = 250;
     bool wrapFragment_ = true;
     bool clientJsModule_ = false;
     std::string hmrClientPath_;

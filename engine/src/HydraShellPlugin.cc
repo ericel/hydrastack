@@ -461,4 +461,48 @@ std::string HydraSsrPlugin::metricsPrometheus() const {
     return out.str();
 }
 
+Json::Value HydraSsrPlugin::observatoryReport() const {
+    const auto snapshot = metricsSnapshot();
+
+    Json::Value report(Json::objectValue);
+    report["service"] = "HydraStack";
+    report["mode"] = "shell";
+    report["status"] = "ok";
+
+    Json::Value metrics(Json::objectValue);
+    metrics["hydra_render_timeouts_total"] =
+        static_cast<Json::UInt64>(snapshot.renderTimeouts);
+    metrics["hydra_render_errors_total"] =
+        static_cast<Json::UInt64>(snapshot.renderErrors);
+    metrics["hydra_pool_timeouts_total"] =
+        static_cast<Json::UInt64>(snapshot.poolTimeouts);
+    metrics["hydra_recycles_total"] =
+        static_cast<Json::UInt64>(snapshot.runtimeRecycles);
+    metrics["hydra_pool_in_use"] = static_cast<Json::UInt64>(0);
+    metrics["hydra_pool_size"] = static_cast<Json::UInt64>(0);
+    metrics["hydra_requests_ok_total"] =
+        static_cast<Json::UInt64>(snapshot.requestsOk);
+    metrics["hydra_requests_fail_total"] =
+        static_cast<Json::UInt64>(snapshot.requestsFail);
+    report["metrics"] = std::move(metrics);
+
+    Json::Value latency(Json::objectValue);
+    latency["hydra_render_latency_avg_ms"] = 0.0;
+    latency["hydra_acquire_wait_avg_ms"] = 0.0;
+    latency["hydra_request_total_avg_ms"] = 0.0;
+    report["latency"] = std::move(latency);
+
+    Json::Value recommendations(Json::arrayValue);
+    Json::Value shellMode(Json::objectValue);
+    shellMode["level"] = "info";
+    shellMode["metric"] = "hydra_shell_mode";
+    shellMode["summary"] = "HydraStack is running in shell/CSR mode without V8 SSR.";
+    shellMode["action"] =
+        "Use the V8 engine build for production SSR metrics such as render latency, pool usage, and render timeouts.";
+    recommendations.append(std::move(shellMode));
+    report["recommendations"] = std::move(recommendations);
+
+    return report;
+}
+
 }  // namespace hydra

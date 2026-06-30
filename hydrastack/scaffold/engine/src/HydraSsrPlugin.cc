@@ -928,7 +928,7 @@ void HydraSsrPlugin::initAndStart(const Json::Value &config) {
         clientManifestEntry_ = config.get("client_entry_key", "src/entry-client.tsx").asString();
     }
     isolateAcquireTimeoutMs_ = config.get("acquire_timeout_ms", 0).asUInt64();
-    renderTimeoutMs_ = config.get("render_timeout_ms", 50).asUInt64();
+    renderTimeoutMs_ = config.get("render_timeout_ms", 250).asUInt64();
     wrapFragment_ = config.get("wrap_fragment", true).asBool();
     apiBridgeEnabled_ = config.get("api_bridge_enabled", true).asBool();
     logRenderMetrics_ = config.get("log_render_metrics", true).asBool();

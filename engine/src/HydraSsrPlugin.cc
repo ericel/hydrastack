@@ -6,6 +6,7 @@
 #include "hydra/V8Platform.h"
 
 #include <drogon/drogon.h>
+#include <drogon/HttpClient.h>
 #include <json/reader.h>
 #include <json/writer.h>
 
@@ -14,6 +15,7 @@
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <functional>
 #include <optional>
 #include <random>
 #include <sstream>
@@ -42,6 +44,16 @@ std::string toLowerCopy(std::string value) {
         return static_cast<char>(std::tolower(ch));
     });
     return value;
+}
+
+bool shouldSkipProxyResponseHeader(const std::string &name) {
+    const auto lowerName = toLowerCopy(name);
+    return lowerName == "connection" || lowerName == "content-length" ||
+           lowerName == "content-type" || lowerName == "date" ||
+           lowerName == "keep-alive" || lowerName == "proxy-authenticate" ||
+           lowerName == "proxy-authorization" || lowerName == "server" ||
+           lowerName == "te" || lowerName == "trailer" ||
+           lowerName == "transfer-encoding" || lowerName == "upgrade";
 }
 
 std::string trimAsciiWhitespace(std::string value) {
@@ -1045,22 +1057,74 @@ void HydraSsrPlugin::registerDevProxyRoutes() {
         return;
     }
 
-    const auto forwardProxy =
-        [origin = devProxyOrigin_, timeout = devProxyTimeoutSec_](
+    using DevProxyHandler = std::function<void(
+        const drogon::HttpRequestPtr &,
+        std::function<void(const drogon::HttpResponsePtr &)> &&)>;
+
+    const auto proxyClient = drogon::HttpClient::newHttpClient(devProxyOrigin_);
+    const DevProxyHandler forwardProxy =
+        [client = std::move(proxyClient), timeout = devProxyTimeoutSec_](
             const drogon::HttpRequestPtr &req,
             std::function<void(const drogon::HttpResponsePtr &)> &&callback) {
-            drogon::app().forward(req, std::move(callback), origin, timeout);
+            auto upstreamReq = drogon::HttpRequest::newHttpRequest();
+            upstreamReq->setMethod(req->method());
+            const auto upstreamPath = req->query().empty()
+                                          ? req->path()
+                                          : req->path() + "?" + req->query();
+            upstreamReq->setPath(upstreamPath);
+            upstreamReq->setPathEncode(false);
+            upstreamReq->setPassThrough(true);
+            if (!req->body().empty()) {
+                upstreamReq->setBody(std::string(req->body()));
+            }
+            const auto contentType = req->getHeader("content-type");
+            if (!contentType.empty()) {
+                upstreamReq->addHeader("content-type", contentType);
+            }
+            const auto accept = req->getHeader("accept");
+            if (!accept.empty()) {
+                upstreamReq->addHeader("accept", accept);
+            }
+
+            client->sendRequest(
+                upstreamReq,
+                [callback = std::move(callback)](
+                    drogon::ReqResult result,
+                    const drogon::HttpResponsePtr &response) mutable {
+                    if (result == drogon::ReqResult::Ok && response) {
+                        auto proxied = drogon::HttpResponse::newHttpResponse();
+                        proxied->setStatusCode(response->statusCode());
+                        const auto contentType = response->getHeader("content-type");
+                        if (!contentType.empty()) {
+                            proxied->setContentTypeString(contentType);
+                        }
+                        proxied->setBody(std::string(response->body()));
+                        for (const auto &[headerName, headerValue] : response->headers()) {
+                            if (!shouldSkipProxyResponseHeader(headerName)) {
+                                proxied->addHeader(headerName, headerValue);
+                            }
+                        }
+                        callback(proxied);
+                        return;
+                    }
+
+                    auto fallback = drogon::HttpResponse::newHttpResponse();
+                    fallback->setStatusCode(drogon::k502BadGateway);
+                    fallback->setBody("Hydra dev proxy failed");
+                    callback(fallback);
+                },
+                timeout);
         };
 
     // Exact routes for Vite runtime endpoints used by CSS/React refresh.
     drogon::app().registerHandler(
         "/@vite/client",
-        forwardProxy,
+        DevProxyHandler(forwardProxy),
         {},
         "hydra_dev_proxy_vite_client");
     drogon::app().registerHandler(
         "/@react-refresh",
-        forwardProxy,
+        DevProxyHandler(forwardProxy),
         {},
         "hydra_dev_proxy_react_refresh");
 
@@ -1068,12 +1132,13 @@ void HydraSsrPlugin::registerDevProxyRoutes() {
                                               const std::string &handlerName) {
         drogon::app().registerHandlerViaRegex(
             pattern,
-            forwardProxy,
+            DevProxyHandler(forwardProxy),
             {},
             handlerName);
     };
 
-    registerProxy("^/assets/.*$", "hydra_dev_proxy_assets");
+    // Keep `/assets` owned by the app server so its own public assets and SSR
+    // bundle continue to resolve locally in dev.
     registerProxy("^/@vite/.*$", "hydra_dev_proxy_vite");
     registerProxy("^/%40vite/.*$", "hydra_dev_proxy_vite_encoded");
     registerProxy("^/@id/.*$", "hydra_dev_proxy_id");
@@ -1081,6 +1146,7 @@ void HydraSsrPlugin::registerDevProxyRoutes() {
     registerProxy("^/%40id/.*$", "hydra_dev_proxy_id_encoded");
     registerProxy("^/%40fs/.*$", "hydra_dev_proxy_fs_encoded");
     registerProxy("^/src/.*$", "hydra_dev_proxy_src");
+    registerProxy("^/locales/.*$", "hydra_dev_proxy_locales");
     registerProxy("^/node_modules/.*$", "hydra_dev_proxy_node_modules");
 }
 
@@ -1543,6 +1609,9 @@ SsrRenderResult HydraSsrPlugin::renderResult(const drogon::HttpRequestPtr &req,
     const auto requestId = resolveRequestId(req);
     const auto requestContext = buildRequestContext(req, routeUrl, requestId);
     const auto requestContextJson = toCompactJson(requestContext);
+    // effectivePropsJson merges __hydra_request into props for the client
+    // hydration snapshot only. The SSR render() call receives props and request
+    // context as separate arguments, so it does not consume this merged blob.
     std::string effectivePropsJson = propsJson;
     Json::Value propsObject;
     std::string pageId;
@@ -1679,10 +1748,14 @@ SsrRenderResult HydraSsrPlugin::renderResult(const drogon::HttpRequestPtr &req,
 
         try {
             const auto renderStartedAt = std::chrono::steady_clock::now();
+            // Pass the original props to render(); the request context is
+            // supplied exclusively via the third argument. effectivePropsJson
+            // (props merged with __hydra_request) is reserved for the client
+            // hydration embed, which has no separate context channel.
             auto rawRenderOutput =
                 lease->render(
                     routeUrl,
-                    effectivePropsJson,
+                    propsJson,
                     requestContextJson,
                     isolatePool_->renderTimeoutMs());
             observeAcquireWait(acquireWaitMs);

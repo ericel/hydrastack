@@ -158,17 +158,17 @@ target_link_libraries(hydra_engine
     ${V8_LIBRARIES}
 )
 
-add_executable(hydra_demo
+add_executable(hydra_app
   app/src/main.cc
   app/src/controllers/Home.cc
 )
 
-target_link_libraries(hydra_demo
+target_link_libraries(hydra_app
   PRIVATE
     hydra_engine
 )
 
-target_compile_definitions(hydra_demo
+target_compile_definitions(hydra_app
   PRIVATE
     HYDRA_PUBLIC_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/public\"
 )
@@ -176,5 +176,5 @@ target_compile_definitions(hydra_demo
 if(HYDRA_BUILD_UI)
   include(cmake/HydraUI.cmake)
   hydra_add_ui_build(hydra_ui_build "${CMAKE_CURRENT_SOURCE_DIR}/ui")
-  add_dependencies(hydra_demo hydra_ui_build)
+  add_dependencies(hydra_app hydra_ui_build)
 endif()

@@ -91,17 +91,17 @@ find_package(drogon CONFIG REQUIRED)
 find_package(jsoncpp CONFIG REQUIRED)
 find_package(HydraStack CONFIG REQUIRED)
 
-add_executable(hydra_demo
+add_executable(hydra_app
   app/src/main.cc
   app/src/controllers/Home.cc
 )
 
-target_link_libraries(hydra_demo
+target_link_libraries(hydra_app
   PRIVATE
     HydraStack::hydra_engine
 )
 
-target_compile_definitions(hydra_demo
+target_compile_definitions(hydra_app
   PRIVATE
     HYDRA_PUBLIC_DIR=\\"${CMAKE_CURRENT_SOURCE_DIR}/public\\"
 )
@@ -1175,7 +1175,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     mode = normalize_mode(args)
     build_dir, config_path = resolve_mode_paths(root, mode, args.build_dir, args.config)
 
-    binary_path = build_dir / "hydra_demo"
+    binary_path = build_dir / "hydra_app"
     if not binary_path.exists():
         suggested = "hydra build --prod" if mode == "prod" else "hydra build"
         raise ValueError(
@@ -1318,7 +1318,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_cmd = subparsers.add_parser(
         "run",
-        help="Run built hydra_demo with selected config",
+        help="Run built hydra_app with selected config",
     )
     add_mode_flags(run_cmd)
     run_cmd.add_argument(
@@ -1332,7 +1332,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_cmd.add_argument(
         "extra_args",
         nargs=argparse.REMAINDER,
-        help="Extra arguments passed to hydra_demo",
+        help="Extra arguments passed to hydra_app",
     )
     run_cmd.set_defaults(func=cmd_run)
 

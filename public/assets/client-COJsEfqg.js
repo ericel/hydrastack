@@ -6968,7 +6968,7 @@
     m.createRoot;
     hydrateRoot = m.hydrateRoot;
   }
-  const __vite_glob_0_0 = '# HydraStack UI translations (en)\nmsgid ""\nmsgstr ""\n"Language: en\\n"\n"Content-Type: text/plain; charset=UTF-8\\n"\n\nmsgid "bridge_status"\nmsgstr "Bridge status"\n\nmsgid "full_url"\nmsgstr "Full URL"\n\nmsgid "hello_from_hydrastack"\nmsgstr "Hello from HydraStack app"\n\nmsgid "hydrated_clicks"\nmsgstr "Hydrated clicks"\n\nmsgid "isolate_counter"\nmsgstr "Isolate counter"\n\nmsgid "locale"\nmsgstr "Locale"\n\nmsgid "locale_candidates"\nmsgstr "Locale candidates"\n\nmsgid "page_id"\nmsgstr "Page ID"\n\nmsgid "post_detail_title"\nmsgstr "Post detail"\n\nmsgid "post_id"\nmsgstr "Post ID"\n\nmsgid "query_params"\nmsgstr "Query params"\n\nmsgid "route"\nmsgstr "Route"\n\nmsgid "ssr_burn"\nmsgstr "SSR burn"\n\nmsgid "theme"\nmsgstr "Theme"\n';
+  const __vite_glob_0_0 = '# HydraStack UI translations (en)\nmsgid ""\nmsgstr ""\n"Language: en\\n"\n"Content-Type: text/plain; charset=UTF-8\\n"\n\nmsgid "bridge_status"\nmsgstr "Bridge status"\n\nmsgid "full_url"\nmsgstr "Full URL"\n\nmsgid "hello_from_hydrastack"\nmsgstr "Hello from HydraStack app"\n\nmsgid "hydrated_clicks"\nmsgstr "Hydrated clicks"\n\nmsgid "isolate_counter"\nmsgstr "Isolate counter"\n\nmsgid "locale"\nmsgstr "Locale"\n\nmsgid "locale_candidates"\nmsgstr "Locale candidates"\n\nmsgid "page_id"\nmsgstr "Page ID"\n\nmsgid "post_detail_title"\nmsgstr "Post detail"\n\nmsgid "post_id"\nmsgstr "Post ID"\n\nmsgid "query_params"\nmsgstr "Query params"\n\nmsgid "route"\nmsgstr "Route"\n\nmsgid "ssr_burn"\nmsgstr "SSR burn"\n\nmsgid "theme"\nmsgstr "Theme"\n\nmsgid "toggle_theme"\nmsgstr "Toggle theme"\n';
   const __vite_glob_0_1 = `# HydraStack UI translations (fr)
 msgid ""
 msgstr ""
@@ -7016,8 +7016,11 @@ msgstr "Charge SSR"
 
 msgid "theme"
 msgstr "Theme"
+
+msgid "toggle_theme"
+msgstr "Changer le theme"
 `;
-  const __vite_glob_0_2 = '# HydraStack UI translations (ko)\nmsgid ""\nmsgstr ""\n"Language: ko\\n"\n"Content-Type: text/plain; charset=UTF-8\\n"\n\nmsgid "bridge_status"\nmsgstr "Bridge status"\n\nmsgid "full_url"\nmsgstr "Full URL"\n\nmsgid "hello_from_hydrastack"\nmsgstr "Annyeong from HydraStack"\n\nmsgid "hydrated_clicks"\nmsgstr "Hydrated clicks"\n\nmsgid "isolate_counter"\nmsgstr "Isolate counter"\n\nmsgid "locale"\nmsgstr "Locale"\n\nmsgid "locale_candidates"\nmsgstr "Locale candidates"\n\nmsgid "page_id"\nmsgstr "Page ID"\n\nmsgid "post_detail_title"\nmsgstr "Post detail"\n\nmsgid "post_id"\nmsgstr "Post ID"\n\nmsgid "query_params"\nmsgstr "Query params"\n\nmsgid "route"\nmsgstr "Route"\n\nmsgid "ssr_burn"\nmsgstr "SSR burn"\n\nmsgid "theme"\nmsgstr "Theme"\n';
+  const __vite_glob_0_2 = '# HydraStack UI translations (ko)\nmsgid ""\nmsgstr ""\n"Language: ko\\n"\n"Content-Type: text/plain; charset=UTF-8\\n"\n\nmsgid "bridge_status"\nmsgstr "Bridge status"\n\nmsgid "full_url"\nmsgstr "Full URL"\n\nmsgid "hello_from_hydrastack"\nmsgstr "Annyeong from HydraStack"\n\nmsgid "hydrated_clicks"\nmsgstr "Hydrated clicks"\n\nmsgid "isolate_counter"\nmsgstr "Isolate counter"\n\nmsgid "locale"\nmsgstr "Locale"\n\nmsgid "locale_candidates"\nmsgstr "Locale candidates"\n\nmsgid "page_id"\nmsgstr "Page ID"\n\nmsgid "post_detail_title"\nmsgstr "Post detail"\n\nmsgid "post_id"\nmsgstr "Post ID"\n\nmsgid "query_params"\nmsgstr "Query params"\n\nmsgid "route"\nmsgstr "Route"\n\nmsgid "ssr_burn"\nmsgstr "SSR burn"\n\nmsgid "theme"\nmsgstr "Theme"\n\nmsgid "toggle_theme"\nmsgstr "Toggle theme"\n';
   const FALLBACK_LOCALE = "en";
   function normalizeLocale(locale) {
     return locale.trim().replaceAll("_", "-").toLowerCase();
@@ -7143,6 +7146,12 @@ msgstr "Theme"
   function asString$1(value, fallback) {
     return typeof value === "string" ? value : fallback;
   }
+  function asObject$1(value) {
+    if (typeof value !== "object" || value === null) {
+      return {};
+    }
+    return value;
+  }
   function asNumber(value) {
     if (typeof value === "number" && Number.isFinite(value)) {
       return value;
@@ -7160,6 +7169,29 @@ msgstr "Theme"
       return [];
     }
     return value.filter((item) => typeof item === "string");
+  }
+  function normalizeThemeName(value) {
+    return value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  }
+  function buildThemeSequence(supportedThemes, themeCandidates, fallbackTheme) {
+    const sequence = [];
+    const append = (theme) => {
+      if (!theme || sequence.includes(theme)) {
+        return;
+      }
+      sequence.push(theme);
+    };
+    for (const theme of asStringArray(supportedThemes)) {
+      append(normalizeThemeName(theme));
+    }
+    for (const theme of asStringArray(themeCandidates)) {
+      append(normalizeThemeName(theme));
+    }
+    append(normalizeThemeName(fallbackTheme));
+    if (sequence.length === 0) {
+      sequence.push("ocean");
+    }
+    return sequence;
   }
   function asStringRecord$1(value) {
     if (typeof value !== "object" || value === null) {
@@ -7183,11 +7215,31 @@ msgstr "Theme"
     const routeContract = typeof initialProps.__hydra_route === "object" && initialProps.__hydra_route !== null ? initialProps.__hydra_route : {};
     const pageId = asString$1(routeContract.pageId, asString$1(initialProps.page, "home"));
     const routeParams = asStringRecord$1(routeContract.params);
+    const errorStatusCode = asNumber(initialProps.errorStatusCode ?? initialProps.error_status_code);
+    const errorReason = asString$1(initialProps.errorReason, asString$1(initialProps.error_reason, ""));
     const routeQuery = asStringRecord$1(routeContract.query);
     const postId = asString$1(routeParams.postId, asString$1(initialProps.postId, ""));
+    const post = asObject$1(initialProps.post);
+    const postTitle = asString$1(post.title, postId ? `Post ${postId}` : "");
+    const postSummary = asString$1(post.summary, "");
+    const postBody = asString$1(post.body, "");
+    const postAuthor = asString$1(post.author, "");
+    const postPublishedAt = asString$1(post.publishedAt, "");
+    const postTags = asStringArray(post.tags);
+    const postReadMinutes = asNumber(post.readMinutes);
+    const postLikes = asNumber(post.likes);
     const querySummary = Object.entries(routeQuery).map(([key, value]) => `${key}=${value}`).join(", ");
+    const isPostDetailPage = pageId === "post_detail";
     const requestLocale = asString$1(requestContext.locale, "en").toLowerCase();
-    const requestTheme = asString$1(requestContext.theme, "ocean").toLowerCase();
+    const requestTheme = normalizeThemeName(asString$1(requestContext.theme, "ocean")) || "ocean";
+    const themeSequence = buildThemeSequence(
+      requestContext.themeSupportedThemes,
+      requestContext.themeCandidates,
+      requestTheme
+    );
+    const themeCookieName = asString$1(requestContext.themeCookieName, "hydra_theme").trim() || "hydra_theme";
+    const initialTheme = themeSequence.includes(requestTheme) ? requestTheme : themeSequence[0];
+    const [activeTheme, setActiveTheme] = React.useState(initialTheme);
     const i18n = React.useMemo(() => createGettext(requestLocale), [requestLocale]);
     const gettext = i18n.gettext;
     const _ = i18n._;
@@ -7196,11 +7248,28 @@ msgstr "Theme"
     const localeCandidates = debugLocaleCandidates.length > 0 ? debugLocaleCandidates : i18n.localeCandidates;
     const messageKey = asString$1(initialProps.messageKey, asString$1(initialProps.message_key, ""));
     const messageFallback = asString$1(initialProps.message, "");
-    const message = messageKey ? gettext(messageKey) : messageFallback || _("hello_from_hydrastack");
+    const message = pageId === "error_http" ? errorReason || (errorStatusCode !== null ? `HTTP ${errorStatusCode}` : "Request failed") : pageId === "not_found" ? "Page not found" : messageKey ? gettext(messageKey) : messageFallback || _("hello_from_hydrastack");
     const requestUrl = asString$1(requestContext.url, "");
     const bridgeStatus = asNumber(initialProps.__hydra_bridge_status);
     const bridgeBody = asString$1(initialProps.__hydra_bridge_body, "");
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { "data-theme": requestTheme, className: "h1pkg8nd h1cn6c31", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "h1nbwcgk h12rcolt h14aqli2 h10z0o3a", children: [
+    React.useEffect(() => {
+      setActiveTheme(initialTheme);
+    }, [initialTheme]);
+    const toggleTheme = React.useCallback(() => {
+      setActiveTheme((current) => {
+        if (themeSequence.length === 0) {
+          return current;
+        }
+        const currentIndex = themeSequence.indexOf(current);
+        const normalizedIndex = currentIndex >= 0 ? currentIndex : 0;
+        const next = themeSequence[(normalizedIndex + 1) % themeSequence.length];
+        if (typeof document !== "undefined") {
+          document.cookie = `${encodeURIComponent(themeCookieName)}=${encodeURIComponent(next)}; path=/; max-age=31536000`;
+        }
+        return next;
+      });
+    }, [themeCookieName, themeSequence]);
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { "data-theme": activeTheme, className: "h1pkg8nd h1cn6c31", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "h1nbwcgk h12rcolt h14aqli2 h10z0o3a", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "hiyw1ix haok3ij h65dh8x hvasm36", children: "HydraStack" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "h1842365 h1n67ab7 hzd3ouy", children: message }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h1664vbc h1d14slv", children: [
@@ -7213,10 +7282,43 @@ msgstr "Theme"
         ": ",
         pageId
       ] }),
+      errorStatusCode !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
+        "HTTP status: ",
+        errorStatusCode,
+        errorReason ? ` (${errorReason})` : ""
+      ] }) : null,
       postId ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
         gettext("post_id"),
         ": ",
         postId
+      ] }) : null,
+      isPostDetailPage ? /* @__PURE__ */ jsxRuntimeExports.jsxs("article", { className: "h1842365 hc6yhtt h8ouvcn h1yv5x2m h1wenx2k h16omn86", children: [
+        postTitle ? /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "hj8124d hzd3ouy", children: postTitle }) : null,
+        postSummary ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "h16g4h0b hiyw1ix h1d14slv", children: postSummary }) : null,
+        postBody ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "h1664vbc hiyw1ix h1s3aq7i", children: postBody }) : null,
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "h1664vbc h1kagvzm h1t5e6r1 h15qbmb3 hji0ntc h1d14slv", children: [
+          postAuthor ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+            "Author: ",
+            postAuthor
+          ] }) : null,
+          postPublishedAt ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+            "Published: ",
+            postPublishedAt
+          ] }) : null,
+          postReadMinutes !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+            "Read: ",
+            postReadMinutes,
+            " min"
+          ] }) : null,
+          postLikes !== null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+            "Likes: ",
+            postLikes
+          ] }) : null
+        ] }),
+        postTags.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16g4h0b hji0ntc h1d14slv", children: [
+          "Tags: ",
+          postTags.join(", ")
+        ] }) : null
       ] }) : null,
       querySummary ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
         gettext("query_params"),
@@ -7231,7 +7333,58 @@ msgstr "Theme"
       /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
         gettext("theme"),
         ": ",
-        requestTheme
+        activeTheme
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          className: "h1664vbc hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
+          onClick: toggleTheme,
+          type: "button",
+          children: gettext("toggle_theme")
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "h1842365 h1kagvzm h1t5e6r1 h15gc0m4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "a",
+          {
+            className: "hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
+            href: "/posts/123",
+            children: "Open post 123"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "a",
+          {
+            className: "hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
+            href: "/posts/456",
+            children: "Open post 456"
+          }
+        ),
+        isPostDetailPage ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "a",
+          {
+            className: "hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
+            href: "/",
+            children: "Back to home"
+          }
+        ) : null,
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "a",
+          {
+            className: "hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
+            href: "/go-home",
+            children: "Test redirect"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "a",
+          {
+            className: "hdm2rhw h13qre44 h1agfoas hji0ntc hzphq94 h1a3o3j6 h1r66ctu",
+            href: "/not-found",
+            children: "Test 404"
+          }
+        )
       ] }),
       localeCandidates.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "h16q42pa hji0ntc h1d14slv", children: [
         gettext("locale_candidates"),
@@ -7373,4 +7526,4 @@ msgstr "Theme"
     );
   }
 })();
-//# sourceMappingURL=client-pUBd2WOm.js.map
+//# sourceMappingURL=client-COJsEfqg.js.map

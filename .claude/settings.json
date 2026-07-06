@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmake --build build --target hydra_app -j)",
+      "Bash(cmake -S . -B build)",
+      "Bash(python3 -m hydrastack.cli new --help)",
+      "Bash(cmake -S . -B build-prod)",
+      "Bash(cmake --build build-prod --target help)",
+      "Bash(cmake -S . -B build-dbwaller)",
+      "Bash(cmake --build build-dbwaller --target help)"
+    ]
+  }
+}

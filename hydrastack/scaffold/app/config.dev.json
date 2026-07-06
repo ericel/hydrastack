@@ -59,7 +59,7 @@
           "proxy_assets": false,
           "inject_hmr_client": true,
           "vite_origin": "http://127.0.0.1:5174",
-          "css_path": "/src/styles.css",
+          "css_path": "/src/styles.css?direct",
           "client_entry_path": "/src/entry-client.tsx",
           "hmr_client_path": "/@vite/client",
           "proxy_timeout_sec": 10.0,

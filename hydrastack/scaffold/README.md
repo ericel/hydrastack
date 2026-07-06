@@ -50,7 +50,7 @@ cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=build/build/Release/generators/conan_
   -DV8_INCLUDE_DIR=/path/to/v8/include \
   -DV8_LIBRARIES="/path/to/v8/libs"
 cmake --build build -j
-./build/hydra_demo
+./build/hydra_app
 ```
 
 If you want CMake to trigger UI bundling, configure with `-DHYDRA_BUILD_UI=ON`.
@@ -64,7 +64,7 @@ The `./hydra` command now includes project lifecycle commands in addition to i18
 - `./hydra doctor`: validate local setup (HydraStackConfig visibility, V8 readiness, prefix sanity)
 - `./hydra dev`: run Vite + Drogon watcher stack (development mode by default)
 - `./hydra build`: build UI bundles + C++ server
-- `./hydra run`: run built `hydra_demo` with selected config
+- `./hydra run`: run built `hydra_app` with selected config
 - `./hydra makemessages ...`, `./hydra compilemessages ...`: i18n maintenance
 
 Scaffold layout defaults to `app/` for new projects. Existing `demo/` projects remain compatible.
@@ -125,8 +125,8 @@ Notes:
   - `HYDRA_APP_PORT=8080`
   - `HYDRA_VITE_PORT=5174`
 - `main.cc` also supports `HYDRA_CONFIG` env var or a CLI arg:
-  - `HYDRA_CONFIG=app/config.dev.json ./build/hydra_demo`
-  - `./build/hydra_demo app/config.dev.json`
+  - `HYDRA_CONFIG=app/config.dev.json ./build/hydra_app`
+  - `./build/hydra_app app/config.dev.json`
 
 ### Upload Storage Policy
 
@@ -189,7 +189,7 @@ ab -n 200 -c 20 http://127.0.0.1:8080/
 Contention and isolate-state proof checks:
 
 1. Start with serialized pool:
-   set `pool_size` to `1` in `app/config.json`, run `./build/hydra_demo`, then:
+   set `pool_size` to `1` in `app/config.json`, run `./build/hydra_app`, then:
 ```bash
 ab -k -n 5000 -c 200 "http://127.0.0.1:8080/?burn_ms=3"
 ```
@@ -244,9 +244,10 @@ frontend requests can be proxied to Vite.
   - `dev`: use Vite dev assets/HMR paths.
   - `auto`: backward-compatible behavior inferred from `dev_mode.enabled`.
 - `dev_mode.enabled`: enable dev mode.
-- `dev_mode.proxy_assets`: proxy `/assets/*`, `/@vite/*`, `/src/*`, `/node_modules/*` to Vite.
+- `dev_mode.proxy_assets`: proxy Vite-only dev routes such as `/@vite/*`, `/src/*`, `/locales/*`, `/node_modules/*`, `/@id/*`, and `/@fs/*` through the app server.
 - `dev_mode.vite_origin`: Vite server origin (default `http://127.0.0.1:5174`).
-- `dev_mode.css_path`: dev stylesheet path (default `/src/styles.css`).
+- `dev_mode.hmr_origin`: optional browser-facing Vite HMR origin for HTTPS/LAN proxies such as Caddy.
+- `dev_mode.css_path`: dev stylesheet path (default `/src/styles.css?direct`).
 - `dev_mode.inject_hmr_client`: inject `@vite/client` into HTML shell.
 - `dev_mode.client_entry_path`: module entry used for client hydration in dev.
 - `api_bridge_enabled`: enable `globalThis.hydra.fetch(...)` bridge in SSR runtime.

@@ -46,7 +46,7 @@ struct HydraSsrPluginConfig {
     std::string devProxyOrigin = "http://127.0.0.1:5174";
     std::string devClientEntryPath = "/src/entry-client.tsx";
     std::string devHmrClientPath = "/@vite/client";
-    std::string devCssPath = "/src/styles.css";
+    std::string devCssPath = "/src/styles.css?direct";
     double devProxyTimeoutSec = 10.0;
     bool devAutoReloadEnabled = false;
     std::string devReloadProbePath = "/__hydra/test";

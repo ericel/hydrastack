@@ -38,7 +38,7 @@ Json::Value makeBaseConfig(const std::string &assetMode) {
     devMode["enabled"] = assetMode == "dev";
     devMode["vite_origin"] = "http://127.0.0.1:5174";
     devMode["client_entry_path"] = "/src/entry-client.tsx";
-    devMode["css_path"] = "/src/styles.css";
+    devMode["css_path"] = "/src/styles.css?direct";
     devMode["proxy_timeout_sec"] = 10.0;
     devMode["reload_interval_ms"] = 1000;
     config["dev_mode"] = devMode;

@@ -209,7 +209,7 @@ class Home final : public drogon::HttpController<Home> {
               HttpCallback &&callback) const {
         Json::Value payload;
         payload["ok"] = true;
-        payload["service"] = "hydra_demo";
+        payload["service"] = "hydra_app";
         payload["path"] = req->path();
         payload["query"] = req->query();
         payload["process_started_ms"] = static_cast<Json::Int64>(kProcessStartedMs);

@@ -23,4 +23,4 @@ if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
 fi
 
 cmake --build "$BUILD_DIR" -j
-exec env HYDRA_CONFIG="$CONFIG_PATH" "$BUILD_DIR/hydra_demo"
+exec env HYDRA_CONFIG="$CONFIG_PATH" "$BUILD_DIR/hydra_app"

@@ -397,9 +397,10 @@ frontend requests can be proxied to Vite.
   - `dev`: use Vite dev assets/HMR paths.
   - `auto`: backward-compatible behavior inferred from `dev_mode.enabled`.
 - `dev_mode.enabled`: enable dev mode.
-- `dev_mode.proxy_assets`: proxy `/assets/*`, `/@vite/*`, `/src/*`, `/node_modules/*` to Vite.
+- `dev_mode.proxy_assets`: proxy Vite-only dev routes such as `/@vite/*`, `/src/*`, `/locales/*`, `/node_modules/*`, `/@id/*`, and `/@fs/*` through the app server.
 - `dev_mode.vite_origin`: Vite server origin (default `http://127.0.0.1:5174`).
-- `dev_mode.css_path`: dev stylesheet path (default `/src/styles.css`).
+- `dev_mode.hmr_origin`: optional browser-facing Vite HMR origin for HTTPS/LAN proxies such as Caddy.
+- `dev_mode.css_path`: dev stylesheet path (default `/src/styles.css?direct`).
 - `dev_mode.inject_hmr_client`: inject `@vite/client` into HTML shell.
 - `dev_mode.client_entry_path`: module entry used for client hydration in dev.
 - `dev_mode.ansi_color_logs`: enable ANSI-colored Hydra startup logs in dev (TTY only).

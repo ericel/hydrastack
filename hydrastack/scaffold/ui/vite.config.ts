@@ -15,6 +15,12 @@ type CssObfuscationConfig = {
 };
 
 type HydraPluginConfig = Record<string, unknown>;
+type ViteHmrConfig = {
+  host: string;
+  clientPort: number;
+  protocol: "ws" | "wss";
+  port?: number;
+};
 const GENERATED_ASSET_PATTERN = /^.+-[a-z0-9_-]{8,}\.[a-z0-9]+(?:\.map)?$/i;
 const LEGACY_GENERATED_ASSET_FILES = new Set([
   "client.js",
@@ -75,6 +81,63 @@ function readHydraPluginConfig(): HydraPluginConfig {
   }
 
   return {};
+}
+
+function readViteOrigin(): string {
+  const pluginConfig = readHydraPluginConfig();
+  const rawDevMode = pluginConfig.dev_mode ?? pluginConfig.devMode;
+  const devMode =
+    rawDevMode && typeof rawDevMode === "object"
+      ? (rawDevMode as Record<string, unknown>)
+      : {};
+  const devModeEnabled = typeof devMode.enabled === "boolean" ? devMode.enabled : false;
+  if (!devModeEnabled) {
+    return "";
+  }
+  const viteOrigin =
+    (typeof devMode.vite_origin === "string" && devMode.vite_origin.trim()) ||
+    (typeof devMode.viteOrigin === "string" && devMode.viteOrigin.trim()) ||
+    "";
+  return viteOrigin || "http://127.0.0.1:5174";
+}
+
+function readViteHmrOrigin(fallbackOrigin: string): string {
+  const pluginConfig = readHydraPluginConfig();
+  const rawDevMode = pluginConfig.dev_mode ?? pluginConfig.devMode;
+  const devMode =
+    rawDevMode && typeof rawDevMode === "object"
+      ? (rawDevMode as Record<string, unknown>)
+      : {};
+  const devModeEnabled = typeof devMode.enabled === "boolean" ? devMode.enabled : false;
+  if (!devModeEnabled) {
+    return "";
+  }
+  const hmrOrigin =
+    (typeof devMode.hmr_origin === "string" && devMode.hmr_origin.trim()) ||
+    (typeof devMode.hmrOrigin === "string" && devMode.hmrOrigin.trim()) ||
+    "";
+  return hmrOrigin || fallbackOrigin;
+}
+
+function buildHmrConfig(viteOrigin: string): ViteHmrConfig | undefined {
+  if (!viteOrigin) {
+    return undefined;
+  }
+  try {
+    const url = new URL(viteOrigin);
+    const port = Number(url.port || (url.protocol === "https:" ? "443" : "80"));
+    if (!url.hostname || !Number.isInteger(port) || port <= 0) {
+      return undefined;
+    }
+    return {
+      host: url.hostname,
+      clientPort: port,
+      protocol: url.protocol === "https:" ? "wss" : "ws",
+      ...(url.port ? { port } : {}),
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 function readCssObfuscationConfig(): CssObfuscationConfig {
@@ -823,6 +886,9 @@ export default defineConfig(({ mode }) => {
   const isSsrBundle = mode === "ssr";
   const isWatchMode = process.argv.includes("--watch");
   const cssObfuscation = readCssObfuscationConfig();
+  const viteOrigin = readViteOrigin();
+  const browserViteOrigin = readViteHmrOrigin(viteOrigin);
+  const hmr = buildHmrConfig(browserViteOrigin);
   const build: UserConfig["build"] = {
     outDir,
     emptyOutDir: false,
@@ -881,10 +947,12 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "127.0.0.1",
       port: 5174,
-      strictPort: true
+      strictPort: true,
+      ...(hmr ? { hmr } : {})
     },
     define: {
-      "process.env.NODE_ENV": JSON.stringify("production")
+      "process.env.NODE_ENV": JSON.stringify("production"),
+      "import.meta.env.VITE_HYDRA_VITE_ORIGIN": JSON.stringify(browserViteOrigin)
     },
     build
   };

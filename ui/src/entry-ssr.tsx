@@ -5,7 +5,7 @@ import { attachRouteContract, ensureString, resolveHydraRoute, type JsonObject }
 
 declare global {
   interface Window {
-    render?: (url: string, propsJson: string, requestContextJson?: string) => string;
+    render?: (url: string, props: unknown, requestContext?: unknown) => string;
   }
 
   interface HydraBridgeResponse {
@@ -19,33 +19,35 @@ declare global {
   }
 
   interface GlobalThis {
-    render?: (url: string, propsJson: string, requestContextJson?: string) => string;
+    render?: (url: string, props: unknown, requestContext?: unknown) => string;
     hydra?: HydraGlobalApi;
   }
 }
 
-function parseProps(propsJson: string): Record<string, unknown> {
-  if (!propsJson) {
-    return {};
+// The C++ boundary parses payloads with v8::JSON::Parse and passes native
+// objects, but accept a JSON string too so the contract stays robust.
+function coerceObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object") {
+    return value as Record<string, unknown>;
   }
 
-  try {
-    return JSON.parse(propsJson) as Record<string, unknown>;
-  } catch {
-    return {};
+  if (typeof value === "string" && value) {
+    try {
+      return JSON.parse(value) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
   }
+
+  return {};
 }
 
-function parseRequestContext(requestContextJson: string | undefined): Record<string, unknown> {
-  if (!requestContextJson) {
-    return {};
-  }
+function parseProps(props: unknown): Record<string, unknown> {
+  return coerceObject(props);
+}
 
-  try {
-    return JSON.parse(requestContextJson) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
+function parseRequestContext(requestContext: unknown): Record<string, unknown> {
+  return coerceObject(requestContext);
 }
 
 function asFiniteNumber(value: unknown): number | null {
@@ -134,19 +136,21 @@ function applySsrTestHooks(
   return props;
 }
 
-// SSR contract: globalThis.render(url, propsJson, requestContextJson) -> app HTML fragment.
+// SSR contract: globalThis.render(url, props, requestContext) -> app HTML fragment.
+// props/requestContext arrive as native objects (parsed at the C++ boundary via
+// v8::JSON::Parse); JSON strings are still accepted for robustness.
 globalThis.render = (
   url: string,
-  propsJson: string,
-  requestContextJson?: string
+  props: unknown,
+  requestContext?: unknown
 ): string => {
-  const parsedProps = parseProps(propsJson);
-  const requestContext = parseRequestContext(requestContextJson);
+  const parsedProps = parseProps(props);
+  const requestContextObject = parseRequestContext(requestContext);
   const propsWithContext: JsonObject = {
     ...parsedProps,
-    __hydra_request: requestContext
+    __hydra_request: requestContextObject
   };
-  const route = resolveHydraRoute(url || "/", propsWithContext, requestContext);
+  const route = resolveHydraRoute(url || "/", propsWithContext, requestContextObject);
   let pageProps = attachRouteContract(propsWithContext, route);
   let status = 200;
   let redirect: string | null = null;

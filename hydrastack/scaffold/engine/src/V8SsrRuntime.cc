@@ -119,6 +119,24 @@ v8::Local<v8::String> toV8String(v8::Isolate *isolate, const std::string &value)
     return out;
 }
 
+// Parse a JSON payload into a native V8 value at the C++/V8 boundary using
+// V8's internal parser, so the SSR bundle receives a ready object graph and
+// skips a JS-side JSON.parse. Malformed or empty input yields an empty object,
+// mirroring the previous try/catch behavior in entry-ssr.tsx.
+v8::Local<v8::Value> parseJsonToV8(v8::Local<v8::Context> context,
+                                   v8::Isolate *isolate,
+                                   const std::string &json) {
+    if (!json.empty()) {
+        v8::TryCatch parseTry(isolate);
+        v8::Local<v8::Value> parsed;
+        if (v8::JSON::Parse(context, toV8String(isolate, json)).ToLocal(&parsed)) {
+            return parsed;
+        }
+        parseTry.Reset();
+    }
+    return v8::Object::New(isolate);
+}
+
 bool parseJsonString(const std::string &json, Json::Value *out) {
     if (out == nullptr) {
         return false;
@@ -371,14 +389,14 @@ std::string V8SsrRuntime::render(const std::string &url,
     if (!context->Global()->Get(context, renderName).ToLocal(&renderValue) ||
         !renderValue->IsFunction()) {
         throw std::runtime_error(
-            "SSR bundle missing globalThis.render(url, propsJson, requestContextJson)");
+            "SSR bundle missing globalThis.render(url, props, requestContext)");
     }
 
     auto renderFunc = v8::Local<v8::Function>::Cast(renderValue);
     v8::Local<v8::Value> args[3] = {
         toV8String(isolate_, url),
-        toV8String(isolate_, propsJson),
-        toV8String(isolate_, requestContextJson),
+        parseJsonToV8(context, isolate_, propsJson),
+        parseJsonToV8(context, isolate_, requestContextJson),
     };
 
     v8::Local<v8::Value> result;

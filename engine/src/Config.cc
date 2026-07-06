@@ -210,6 +210,7 @@ HydraSsrPluginConfig validateAndNormalizeHydraSsrPluginConfig(const Json::Value 
             "proxy_assets",
             "inject_hmr_client",
             "vite_origin",
+            "hmr_origin",
             "client_entry_path",
             "hmr_client_path",
             "css_path",

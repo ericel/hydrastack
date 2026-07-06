@@ -147,7 +147,7 @@ class HydraSsrPlugin : public drogon::Plugin<HydraSsrPlugin> {
     std::string devProxyOrigin_ = "http://127.0.0.1:5174";
     std::string devClientEntryPath_ = "/src/entry-client.tsx";
     std::string devHmrClientPath_ = "/@vite/client";
-    std::string devCssPath_ = "/src/styles.css";
+    std::string devCssPath_ = "/src/styles.css?direct";
     double devProxyTimeoutSec_ = 10.0;
     bool devAutoReloadEnabled_ = false;
     std::string devReloadProbePath_ = "/__hydra/test";

@@ -40,10 +40,27 @@ Compatibility policy for `v0.x`:
 
 ### Conan dependencies
 
-Conan manages Drogon and JSON:
+Use Node 24.22.3 (`.nvmrc`), Conan 2.34.0, and CMake 3.24 or later.
+The framework and generated apps use the same native dependency versions:
 
-- `drogon/1.9.10`
-- `jsoncpp/1.9.5`
+- `drogon/1.9.14` and `trantor/1.5.29`
+- `jsoncpp/1.9.8`
+- `openssl/3.5.9` (3.5 LTS), `c-ares/1.34.9`, and `zlib/1.4`
+- `boost/1.91.0` (the previous 1.83 build fails with current Apple Clang)
+
+Drogon and Trantor remain static; OpenSSL, c-ares and JsonCpp are shared.
+Applications linking an installed engine must use matching versions and options.
+`conan.lock` records the Linux/GCC 13 and macOS/Apple Clang 21 recipe
+revisions; Conan uses it automatically. Regenerate it deliberately when updating
+dependencies, and keep the scaffold lockfile in sync.
+Use `npm ci` for the checked-in UI lockfile, then `npm run typecheck` and
+`npm run build`. The demo and scaffold use Vite 8.3.8, React 18.3.1 and Tailwind
+3.4.19; this update does not change their React or Tailwind major version.
+
+On current macOS libc++, Trantor 1.5.29's synchronization-only `future::get()`
+triggers its own `-Werror` setting. The CLI scopes
+`-Wno-error=unused-result` to Trantor on macOS. For a manual `conan install`,
+include `-c 'trantor/*:tools.build:cxxflags=["-Wno-error=unused-result"]'`.
 
 Conan recipe intent:
 

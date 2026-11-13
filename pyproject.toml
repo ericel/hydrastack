@@ -24,4 +24,4 @@ where = ["."]
 include = ["hydrastack*"]
 
 [tool.setuptools.package-data]
-hydrastack = ["scaffold/**", "scaffold/**/*"]
+hydrastack = ["scaffold/**", "scaffold/**/*", "scaffold/.nvmrc", "scaffold/.node-version", "scaffold/.gitignore", "scaffold/ui/.npmrc"]

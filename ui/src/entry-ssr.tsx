@@ -18,10 +18,8 @@ declare global {
     fetch?: (request: Record<string, unknown> | string) => HydraBridgeResponse;
   }
 
-  interface GlobalThis {
-    render?: (url: string, props: unknown, requestContext?: unknown) => string;
-    hydra?: HydraGlobalApi;
-  }
+  var render: ((url: string, props: unknown, requestContext?: unknown) => string) | undefined;
+  var hydra: HydraGlobalApi | undefined;
 }
 
 // The C++ boundary parses payloads with v8::JSON::Parse and passes native

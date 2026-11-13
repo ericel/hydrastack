@@ -10,3 +10,7 @@
 /.hydra/
 /uploads/*
 !/uploads/.gitkeep
+
+# Local CMake builds and user-specific generated presets.
+/build-*/
+/CMakeUserPresets.json

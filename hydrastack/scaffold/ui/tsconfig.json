@@ -8,7 +8,16 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "types": ["vite/client"]
+    "types": [
+      "vite/client"
+    ],
+    "lib": [
+      "ES2021",
+      "DOM",
+      "DOM.Iterable"
+    ]
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }

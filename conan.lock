@@ -1,0 +1,41 @@
+{
+    "version": "0.5",
+    "requires": [
+        "zlib/1.4#f51abf05ab684e2283b6d4c1243b624f%1793979742.583",
+        "util-linux-libuuid/2.39.2#1dfa3ed14bda06d72ffda9104262e4a5%1781172625.037",
+        "trantor/1.5.29#3db618e0ce9dd91abe469bdfae820e31%1793200347.426",
+        "openssl/3.5.9#e9977d17028841f6971240542d1f7b11%1790692983.827",
+        "libiconv/1.17#1ae2f60ab5d08de1643a22a81b360c59%1737639926.448",
+        "libbacktrace/cci.20210118#a7691bfccd8caaf66309df196790a5a1%1722218217.276",
+        "jsoncpp/1.9.8#5be5e85394fc94f13f6451e5822ea759%1787912339.522",
+        "drogon/1.9.14#0a12011ef04ae4f26d8d605cde3864a5%1793708020.583",
+        "c-ares/1.34.9#52c1c4a734d0a79cbf918dd72fbc6179%1792574488.947",
+        "bzip2/1.0.8#5783c8a17fc6c04697bed2aabc908f93%1743246801.872",
+        "boost/1.91.0#857a04e51881582791677311c881b00d%1790854183.122"
+    ],
+    "build_requires": [
+        "b2/5.3.1#17d161cafc8f83e47e1e88dd107b17ff%1743826941.334"
+    ],
+    "python_requires": [],
+    "overrides": {
+        "trantor/[>=1.5.25 <2]": [
+            "trantor/1.5.29"
+        ],
+        "jsoncpp/1.9.5": [
+            "jsoncpp/1.9.8"
+        ],
+        "openssl/[>=1.1 <4]": [
+            "openssl/3.5.9"
+        ],
+        "zlib/[>=1.2.11 <2]": [
+            "zlib/1.4"
+        ],
+        "boost/1.83.0": [
+            "boost/1.91.0"
+        ],
+        "c-ares/[>=1.25 <2]": [
+            "c-ares/1.34.9"
+        ]
+    },
+    "config_requires": []
+}

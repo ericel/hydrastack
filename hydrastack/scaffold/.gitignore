@@ -5,3 +5,7 @@
 /public/assets/*.map
 /ui/locales/**/LC_MESSAGES/*.mo
 /uploads/
+
+# Local CMake builds and user-specific generated presets.
+/build-*/
+/CMakeUserPresets.json

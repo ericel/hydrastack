@@ -19,7 +19,7 @@ TRANSLATION_CALL_PATTERN = re.compile(
     r"\b(?:gettext|_)\(\s*(?P<quote>['\"])(?P<msgid>(?:\\.|(?!\1).)*)\1\s*\)"
 )
 SCAFFOLD_DIRS = ("app", "cmake", "engine", "ui")
-SCAFFOLD_FILES = ("CMakeLists.txt", "conanfile.py", ".gitignore")
+SCAFFOLD_FILES = ("CMakeLists.txt", "conanfile.py", "conan.lock", ".gitignore", ".nvmrc", ".node-version")
 SCAFFOLD_IGNORE_NAMES = {
     ".git",
     ".idea",
@@ -81,7 +81,7 @@ This project vendors parts of a third-party framework.
 {license_text}
 ```
 """
-EXTERNAL_ENGINE_CMAKELISTS = """cmake_minimum_required(VERSION 3.20)
+EXTERNAL_ENGINE_CMAKELISTS = """cmake_minimum_required(VERSION 3.24)
 project(HydraStackApp VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -628,6 +628,7 @@ def bootstrap_hydrastack_engine_install(mode: str) -> Path | None:
             "--build=missing",
             "-s",
             f"build_type={build_type}",
+            *conan_platform_args(),
         ],
         cwd=source_root,
     )
@@ -658,6 +659,18 @@ def bootstrap_hydrastack_engine_install(mode: str) -> Path | None:
     run_command(["cmake", "--build", str(build_dir), "-j", str(max(1, os.cpu_count() or 1))], cwd=source_root)
     run_command(["cmake", "--install", str(build_dir)], cwd=source_root)
     return install_prefix
+
+
+def conan_platform_args() -> List[str]:
+    # Current libc++ marks future::get() nodiscard; Trantor 1.5.29 intentionally
+    # ignores its synchronization-only value and builds with -Werror.
+    if sys.platform == "darwin":
+        return [
+            "-c", 'trantor/*:tools.build:cxxflags=["-Wno-error=unused-result"]',
+            # CMake must find command-line Git, not /Applications/Git.app.
+            "-c", 'tools.cmake.cmaketoolchain:extra_variables={"CMAKE_FIND_APPBUNDLE":"NEVER"}',
+        ]
+    return []
 
 
 def describe_v8_from_targets(targets_file: Path) -> Tuple[bool, str]:
@@ -993,6 +1006,7 @@ def ensure_cmake_configured(
                     "--build=missing",
                     "-s",
                     f"build_type={build_type}",
+                    *conan_platform_args(),
                 ],
                 cwd=root,
             )

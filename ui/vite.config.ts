@@ -4,10 +4,10 @@ import postcss from "postcss";
 import { defineConfig, type Plugin, type UserConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-const outDir = resolve(__dirname, "../public/assets");
-const ssrEntry = resolve(__dirname, "src/entry-ssr.tsx");
-const clientEntry = resolve(__dirname, "src/entry-client.tsx");
-const sourceDir = resolve(__dirname, "src");
+const outDir = resolve(import.meta.dirname, "../public/assets");
+const ssrEntry = resolve(import.meta.dirname, "src/entry-ssr.tsx");
+const clientEntry = resolve(import.meta.dirname, "src/entry-client.tsx");
+const sourceDir = resolve(import.meta.dirname, "src");
 
 type CssObfuscationConfig = {
   enabled: boolean;
@@ -51,13 +51,13 @@ function readJsonFile(filePath: string): Record<string, unknown> | null {
 function resolveHydraConfigPath(): string {
   const envPath = process.env.HYDRA_UI_CONFIG_PATH ?? process.env.HYDRA_CONFIG_PATH;
   if (envPath) {
-    return resolve(__dirname, "..", envPath);
+    return resolve(import.meta.dirname, "..", envPath);
   }
-  const demoConfig = resolve(__dirname, "../demo/config.json");
+  const demoConfig = resolve(import.meta.dirname, "../demo/config.json");
   if (fs.existsSync(demoConfig)) {
     return demoConfig;
   }
-  return resolve(__dirname, "../app/config.json");
+  return resolve(import.meta.dirname, "../app/config.json");
 }
 
 function readHydraPluginConfig(): HydraPluginConfig {

@@ -18,9 +18,26 @@ class HydraStackConan(ConanFile):
     )
     generators = ("CMakeDeps", "CMakeToolchain")
 
+    default_options = {
+        "drogon/*:shared": False,
+        "trantor/*:shared": False,
+        "openssl/*:shared": True,
+        "c-ares/*:shared": True,
+        "jsoncpp/*:shared": True,
+        # Drogon does not use Cobalt; its optional SSL component is not
+        # packaged consistently by the Boost 1.91 Conan recipe.
+        "boost/*:without_cobalt": True,
+    }
+
     def requirements(self):
-        self.requires("drogon/1.9.10")
-        self.requires("jsoncpp/1.9.5")
+        # Keep the engine, scaffold, and consuming app on one native ABI.
+        self.requires("drogon/1.9.14")
+        self.requires("jsoncpp/1.9.8", force=True)
+        self.requires("trantor/1.5.29", override=True)
+        self.requires("openssl/3.5.9", override=True)
+        self.requires("c-ares/1.34.9", override=True)
+        self.requires("zlib/1.4", override=True)
+        self.requires("boost/1.91.0", override=True)
 
     def layout(self):
         cmake_layout(self)

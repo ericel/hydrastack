@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Give background services their own process groups for complete cleanup.
+set -m
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="${HYDRA_PROJECT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
@@ -18,6 +20,8 @@ RUN_ONCE_SCRIPT="$ROOT_DIR/scripts/run_drogon_dev_once.sh"
 if [[ ! -f "$RUN_ONCE_SCRIPT" ]]; then
   RUN_ONCE_SCRIPT="$SCRIPT_DIR/run_drogon_dev_once.sh"
 fi
+export HYDRA_DEV_SUPERVISOR="$SCRIPT_DIR/dev_supervisor.py"
+APP_TARGET="${HYDRA_APP_TARGET:-hydra_app}"
 DEV_VERBOSE="${HYDRA_DEV_VERBOSE:-0}"
 DEV_LOG_DIR="${HYDRA_DEV_LOG_DIR:-$ROOT_DIR/.hydra/logs}"
 VITE_LOG_FILE="${HYDRA_VITE_LOG_FILE:-$DEV_LOG_DIR/vite-dev.log}"
@@ -175,25 +179,13 @@ fi
 
 APP_URL="${APP_SCHEME}://${APP_PUBLIC_HOST}:${APP_PORT}/"
 
-WATCH_PATHS=(
+SOURCE_PATHS=(
   "$APP_SRC_DIR"
-  "$CONFIG_PATH"
-  "$ROOT_DIR/public/assets"
   "$ROOT_DIR/CMakeLists.txt"
+  "$ROOT_DIR/cmake"
+  "$ROOT_DIR/engine/src"
+  "$ROOT_DIR/engine/include"
 )
-if [[ -d "$ROOT_DIR/engine/src" ]]; then
-  WATCH_PATHS+=("$ROOT_DIR/engine/src")
-fi
-if [[ -d "$ROOT_DIR/engine/include" ]]; then
-  WATCH_PATHS+=("$ROOT_DIR/engine/include")
-fi
-
-FILTERED_WATCH_PATHS=()
-for watch_path in "${WATCH_PATHS[@]}"; do
-  if [[ -e "$watch_path" ]]; then
-    FILTERED_WATCH_PATHS+=("$watch_path")
-  fi
-done
 
 ensure_port_free() {
   local port="$1"
@@ -229,23 +221,28 @@ if [[ "$USE_VITE_SERVER" == "1" ]]; then
 fi
 ensure_ui_dependencies
 
+stop_job() {
+  local pid="$1"
+  kill -TERM -- "-$pid" 2>/dev/null || true
+  for _ in {1..80}; do
+    kill -0 -- "-$pid" 2>/dev/null || break
+    sleep 0.1
+  done
+  kill -KILL -- "-$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
+
 cleanup() {
   local exit_code=$?
-  if [[ -n "${drogon_pid:-}" ]]; then
-    kill "$drogon_pid" 2>/dev/null || true
-  fi
-  if [[ -n "${ssr_watch_pid:-}" ]]; then
-    kill "$ssr_watch_pid" 2>/dev/null || true
-  fi
-  if [[ -n "${client_watch_pid:-}" ]]; then
-    kill "$client_watch_pid" 2>/dev/null || true
-  fi
-  if [[ -n "${vite_pid:-}" ]]; then
-    kill "$vite_pid" 2>/dev/null || true
-  fi
+  trap - EXIT INT TERM
+  for pid in "${drogon_pid:-}" "${ssr_watch_pid:-}" "${client_watch_pid:-}" "${vite_pid:-}"; do
+    [[ -z "$pid" ]] || stop_job "$pid"
+  done
   exit "$exit_code"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 print_service_banner
 
@@ -309,36 +306,15 @@ if ! kill -0 "$ssr_watch_pid" 2>/dev/null; then
   exit 1
 fi
 
-echo "[HydraDev] Watching C++ sources for rebuild + restart..."
-
-if command -v watchexec >/dev/null 2>&1; then
-  WATCH_ARGS=()
-  for watch_path in "${FILTERED_WATCH_PATHS[@]}"; do
-    WATCH_ARGS+=(--watch "$watch_path")
-  done
-
-  HYDRA_BUILD_DIR="$BUILD_DIR" HYDRA_CONFIG_PATH="$CONFIG_PATH" HYDRA_PROJECT_ROOT="$ROOT_DIR" \
-    watchexec \
-      --restart \
-      --signal SIGTERM \
-      "${WATCH_ARGS[@]}" \
-      --exts cc,cpp,cxx,h,hpp,hh,json,txt,js,css,map \
-      -- bash "$RUN_ONCE_SCRIPT"
-elif command -v fswatch >/dev/null 2>&1; then
-  while true; do
-    HYDRA_BUILD_DIR="$BUILD_DIR" HYDRA_CONFIG_PATH="$CONFIG_PATH" HYDRA_PROJECT_ROOT="$ROOT_DIR" \
-      bash "$RUN_ONCE_SCRIPT" &
-    drogon_pid=$!
-
-    fswatch -1 "${FILTERED_WATCH_PATHS[@]}" >/dev/null
-
-    kill "$drogon_pid" 2>/dev/null || true
-    wait "$drogon_pid" 2>/dev/null || true
-    unset drogon_pid
-  done
-else
-  echo "[HydraDev] Install either watchexec or fswatch for C++ hot reload." >&2
-  echo "[HydraDev] Running Drogon once without watcher." >&2
-  HYDRA_BUILD_DIR="$BUILD_DIR" HYDRA_CONFIG_PATH="$CONFIG_PATH" HYDRA_PROJECT_ROOT="$ROOT_DIR" \
-    bash "$RUN_ONCE_SCRIPT"
-fi
+echo "[HydraDev] Watching sources for builds; assets/config for app restarts..."
+WATCH_ARGS=()
+for source_path in "${SOURCE_PATHS[@]}"; do
+  WATCH_ARGS+=(--source "$source_path")
+done
+python3 "$HYDRA_DEV_SUPERVISOR" watch \
+  --root "$ROOT_DIR" --build-dir "$BUILD_DIR" --config "$CONFIG_PATH" \
+  --run-script "$RUN_ONCE_SCRIPT" --target "$APP_TARGET" \
+  "${WATCH_ARGS[@]}" \
+  --runtime "$CONFIG_PATH" --runtime "$ROOT_DIR/public/assets" &
+drogon_pid=$!
+wait "$drogon_pid"

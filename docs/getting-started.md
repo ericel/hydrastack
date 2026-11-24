@@ -16,9 +16,7 @@ Install these first:
 - `conan >= 2`
 - V8 headers/libs (or Homebrew V8 on macOS)
 
-Optional but recommended for hot-reload ergonomics:
-
-- `watchexec` (preferred) or `fswatch`
+Hot reload uses the bundled Python supervisor; no separate file watcher is required.
 
 ### V8 Notes
 

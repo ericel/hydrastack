@@ -4,6 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="${HYDRA_PROJECT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 BUILD_DIR="${HYDRA_BUILD_DIR:-$ROOT_DIR/build}"
+BUILD_JOBS="${CMAKE_BUILD_PARALLEL_LEVEL:-1}"
+APP_TARGET="${HYDRA_APP_TARGET:-hydra_app}"
+SUPERVISOR="${HYDRA_DEV_SUPERVISOR:-$SCRIPT_DIR/dev_supervisor.py}"
 DEFAULT_CONFIG_PATH="$ROOT_DIR/app/config.dev.json"
 LEGACY_CONFIG_PATH="$ROOT_DIR/demo/config.dev.json"
 if [[ -n "${HYDRA_CONFIG_PATH:-}" ]]; then
@@ -22,5 +25,16 @@ if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
   exit 1
 fi
 
-cmake --build "$BUILD_DIR" -j
-exec env HYDRA_CONFIG="$CONFIG_PATH" "$BUILD_DIR/hydra_app"
+case "${1:-}" in
+  --locked-build)
+    cmake --build "$BUILD_DIR" --target "$APP_TARGET" --parallel "$BUILD_JOBS"
+    exit 0
+    ;;
+  ""|--build-only) ;;
+  *) echo "Unknown option: $1" >&2; exit 2 ;;
+esac
+
+python3 "$SUPERVISOR" lock "$BUILD_DIR/.hydra-build.lock" \
+  bash "$SCRIPT_DIR/run_drogon_dev_once.sh" --locked-build
+[[ "${1:-}" != "--build-only" ]] || exit 0
+exec env HYDRA_CONFIG="$CONFIG_PATH" "$BUILD_DIR/$APP_TARGET"

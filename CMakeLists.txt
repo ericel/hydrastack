@@ -228,9 +228,18 @@ if(HYDRA_ENABLE_V8)
     engine/src/HtmlShell.cc
     engine/src/V8IsolatePool.cc
     engine/src/V8Platform.cc
+    engine/src/V8RuntimeGlobals.cc
     engine/src/V8SsrRuntime.cc
+    engine/third_party/ada/ada.cpp
   )
   add_library(HydraStack::hydra_engine ALIAS hydra_engine)
+
+  # ada (vendored WHATWG URL parser) backs the SSR runtime's URL and
+  # URLSearchParams. It is compiled into hydra_engine and its header stays private.
+  target_include_directories(hydra_engine PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/engine/third_party/ada>
+  )
+  set_source_files_properties(engine/third_party/ada/ada.cpp PROPERTIES COMPILE_OPTIONS "-w")
 
   target_include_directories(hydra_engine
     PUBLIC
@@ -294,6 +303,20 @@ if(BUILD_TESTING)
     NAME hydra_config_validation
     COMMAND hydra_config_validation_test
   )
+
+  if(TARGET hydra_engine)
+    add_executable(hydra_ssr_runtime_globals_test
+      engine/test/SsrRuntimeGlobalsTest.cc
+    )
+    target_link_libraries(hydra_ssr_runtime_globals_test
+      PRIVATE
+        hydra_engine
+    )
+    add_test(
+      NAME hydra_ssr_runtime_globals
+      COMMAND hydra_ssr_runtime_globals_test ${CMAKE_CURRENT_SOURCE_DIR}/engine/test/ssr_runtime_globals.js
+    )
+  endif()
 
   if(HYDRA_BUILD_DEMO)
     find_package(Python3 COMPONENTS Interpreter)

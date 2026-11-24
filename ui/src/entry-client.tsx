@@ -1,6 +1,7 @@
 import { hydrateRoot } from "react-dom/client";
 
 import App from "./App";
+import { createHydrationErrorReporter } from "./hydrationDiagnostics";
 import {
   attachRouteContract,
   ensureString,
@@ -64,6 +65,7 @@ if (root) {
 
   hydrateRoot(
     root,
-    <App url={route.routeUrl} initialProps={pageProps} />
+    <App url={route.routeUrl} initialProps={pageProps} />,
+    { onRecoverableError: createHydrationErrorReporter(route.routeUrl) }
   );
 }

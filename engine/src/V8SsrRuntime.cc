@@ -1,5 +1,7 @@
 #include "hydra/V8SsrRuntime.h"
 
+#include "V8RuntimeGlobals.h"
+
 #include <v8.h>
 
 #include <chrono>
@@ -284,73 +286,8 @@ void V8SsrRuntime::loadBundle() {
         throw std::runtime_error("Failed to install Hydra API bridge function");
     }
 
-    const char *bootstrapSource = R"(
-if (typeof globalThis.global === "undefined") globalThis.global = globalThis;
-if (typeof globalThis.self === "undefined") globalThis.self = globalThis;
-if (typeof globalThis.process === "undefined") {
-  globalThis.process = { env: { NODE_ENV: "production" } };
-} else if (!globalThis.process.env) {
-  globalThis.process.env = { NODE_ENV: "production" };
-} else if (!globalThis.process.env.NODE_ENV) {
-  globalThis.process.env.NODE_ENV = "production";
-}
-if (typeof globalThis.TextEncoder === "undefined") {
-  globalThis.TextEncoder = class TextEncoder {
-    encode(input = "") {
-      const normalized = String(input);
-      const encoded = unescape(encodeURIComponent(normalized));
-      const bytes = new Uint8Array(encoded.length);
-      for (let i = 0; i < encoded.length; ++i) {
-        bytes[i] = encoded.charCodeAt(i);
-      }
-      return bytes;
-    }
-  };
-}
-if (typeof globalThis.TextDecoder === "undefined") {
-  globalThis.TextDecoder = class TextDecoder {
-    decode(input = new Uint8Array()) {
-      let raw = "";
-      for (let i = 0; i < input.length; ++i) {
-        raw += String.fromCharCode(input[i]);
-      }
-      return decodeURIComponent(escape(raw));
-    }
-  };
-}
-if (typeof globalThis.queueMicrotask === "undefined") {
-  globalThis.queueMicrotask = (fn) => Promise.resolve().then(fn);
-}
-if (typeof globalThis.setTimeout === "undefined") {
-  globalThis.setTimeout = (fn) => {
-    if (typeof fn === "function") fn();
-    return 0;
-  };
-}
-if (typeof globalThis.clearTimeout === "undefined") {
-  globalThis.clearTimeout = () => {};
-}
-if (typeof globalThis.hydra === "undefined") {
-  globalThis.hydra = {};
-}
-if (typeof globalThis.hydra.fetch !== "function") {
-  globalThis.hydra.fetch = (request = {}) => {
-    const payload = typeof request === "string" ? request : JSON.stringify(request);
-    const raw = globalThis.__hydraFetch(payload);
-    if (typeof raw === "string") {
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return { status: 500, body: "Invalid bridge response", headers: {} };
-      }
-    }
-    return raw;
-  };
-}
-if (typeof globalThis.fetch !== "function") {
-  globalThis.fetch = (request = {}) => Promise.resolve(globalThis.hydra.fetch(request));
-}
-)";
+    runtime_globals::installNatives(isolate_, context);
+    const char *bootstrapSource = runtime_globals::bootstrapSource();
     v8::Local<v8::Script> bootstrapScript;
     if (!v8::Script::Compile(context, toV8String(isolate_, bootstrapSource))
              .ToLocal(&bootstrapScript) ||

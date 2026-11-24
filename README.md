@@ -230,7 +230,6 @@ HydraStack now supports dev flow with:
 Files:
 
 - `demo/config.dev.json`: dev config with `dev_mode.enabled=true`.
-- `scripts/dev.sh`: starts Vite and watches C++ source changes.
 - `scripts/dev.sh`: starts Vite, SSR bundle watch, and watches C++ source changes.
 - `scripts/run_drogon_dev_once.sh`: build + run one Drogon instance.
 
@@ -243,8 +242,12 @@ cd hydrastack
 
 Notes:
 
-- C++ watcher uses `watchexec` if available, otherwise `fswatch`.
-- If neither is installed, the script runs Drogon once and prints a warning.
+- A Python supervisor polls source and runtime files; `watchexec`/`fswatch` are not required.
+- Source edits queue a rebuild after the current build finishes. Asset/config edits only restart the app.
+- Development builds and configure steps using the supervisor share `.hydra-build.lock`; a second watcher for the same build directory is rejected.
+- Shutdown terminates the compiler/server process groups and waits for them before exiting.
+- Builds default to one compiler worker. Override with `CMAKE_BUILD_PARALLEL_LEVEL` when memory permits.
+- Custom `scripts/run_drogon_dev_once.sh` overrides must support `--build-only` (build and exit, without launching the app) and use the shared build lock. See the scaffold helper for the protocol.
 - You can override paths:
   - `HYDRA_BUILD_DIR=/path/to/build`
   - `HYDRA_CONFIG_PATH=/path/to/config.dev.json`
